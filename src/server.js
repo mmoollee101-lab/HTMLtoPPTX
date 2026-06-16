@@ -119,16 +119,31 @@ function serveStatic(req, res) {
   fs.createReadStream(full).pipe(res);
 }
 
-const server = http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/api/convert') {
-    return handleConvert(req, res);
-  }
-  if (req.method === 'GET') return serveStatic(req, res);
-  res.writeHead(405);
-  res.end('Method not allowed');
-});
+function createServer() {
+  return http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/api/convert') {
+      return handleConvert(req, res);
+    }
+    if (req.method === 'GET') return serveStatic(req, res);
+    res.writeHead(405);
+    res.end('Method not allowed');
+  });
+}
 
-server.listen(PORT, () => {
-  console.log(`\n  HTML → editable PPTX web app`);
-  console.log(`  ▶ http://localhost:${PORT}\n`);
-});
+/** Start listening; resolves with { server, port }. Pass 0 for a free port. */
+function start(port = PORT) {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.listen(port, () => resolve({ server, port: server.address().port }));
+  });
+}
+
+module.exports = { createServer, start };
+
+// Run as a plain web server when invoked directly.
+if (require.main === module) {
+  start().then(({ port }) => {
+    console.log(`\n  HTML → editable PPTX web app`);
+    console.log(`  ▶ http://localhost:${port}\n`);
+  });
+}

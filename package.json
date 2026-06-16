@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/cli.js",
+    "app": "node src/app.js",
     "web": "node src/server.js",
     "sample": "node src/cli.js samples/sample.html"
   },

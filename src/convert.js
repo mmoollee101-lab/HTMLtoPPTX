@@ -15,6 +15,91 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
 
+/**
+ * Runs INSIDE the browser page (serialized by puppeteer — must be self-contained).
+ *
+ * For every "leaf" text block under `slideSelector`, measure where the browser
+ * actually wraps each line (via Range.getClientRects per character) and insert a
+ * real <br> at each wrap point. dom-to-pptx then emits those as hard PPTX line
+ * breaks, so PowerPoint reproduces the on-screen line breaks instead of re-wrapping.
+ *
+ * @returns {number} how many <br> were inserted.
+ */
+function bakeLineBreaksInPage(slideSelector) {
+  const slides = Array.from(document.querySelectorAll(slideSelector));
+  let inserted = 0;
+
+  // A "leaf block" owns a line box: it has text and no block-level element child.
+  function isInline(el) {
+    const d = getComputedStyle(el).display;
+    return d.startsWith('inline') || d === 'contents';
+  }
+  function isLeafBlock(el) {
+    let hasText = false;
+    for (const n of el.childNodes) {
+      if (n.nodeType === 3 && n.textContent.trim()) hasText = true;
+      if (n.nodeType === 1 && n.tagName !== 'BR' && !isInline(n)) return false;
+    }
+    return hasText;
+  }
+
+  function bake(block) {
+    const ws = getComputedStyle(block).whiteSpace;
+    if (ws === 'pre' || ws === 'nowrap') return; // already exact / never wraps
+    const lhRaw = parseFloat(getComputedStyle(block).lineHeight);
+    const fs = parseFloat(getComputedStyle(block).fontSize) || 16;
+    const lineH = isNaN(lhRaw) ? fs * 1.2 : lhRaw;
+    const threshold = Math.max(3, lineH * 0.5);
+
+    // Walk text nodes AND <br> in document order so existing breaks reset state.
+    const walker = document.createTreeWalker(
+      block,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
+    );
+    const range = document.createRange();
+    const cuts = []; // {node, offset} where a new visual line begins
+    let lastTop = null;
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === 1) {
+        if (node.tagName === 'BR') lastTop = null; // hard break already there
+        continue;
+      }
+      const len = node.textContent.length;
+      for (let i = 0; i < len; i++) {
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        const rects = range.getClientRects();
+        if (!rects.length) continue;
+        const top = rects[rects.length - 1].top;
+        if (lastTop !== null && top > lastTop + threshold) {
+          cuts.push({ node, offset: i });
+        }
+        lastTop = top;
+      }
+    }
+
+    // Insert from last to first so earlier offsets stay valid.
+    for (let k = cuts.length - 1; k >= 0; k--) {
+      const { node: n, offset } = cuts[k];
+      const br = document.createElement('br');
+      if (offset === 0) n.parentNode.insertBefore(br, n);
+      else {
+        const after = n.splitText(offset);
+        after.parentNode.insertBefore(br, after);
+      }
+      inserted++;
+    }
+  }
+
+  for (const slide of slides) {
+    slide.querySelectorAll('*').forEach((el) => {
+      if (isLeafBlock(el)) bake(el);
+    });
+  }
+  return inserted;
+}
+
 /** Resolve the browser bundle that exposes the global `domToPptx`. */
 function resolveBundlePath() {
   // require.resolve('dom-to-pptx') -> .../dist/dom-to-pptx.cjs
@@ -33,11 +118,14 @@ function resolveBundlePath() {
  * @param {object} [opts]
  * @param {string} [opts.slideSelector='.slide']  CSS selector for each slide element.
  * @param {import('puppeteer').Browser} [opts.browser]  Reuse an existing browser.
+ * @param {boolean} [opts.lockLineBreaks=true] Bake the browser's exact soft-wrap
+ *        positions into the DOM as <br> so PowerPoint can't re-flow them.
  * @param {(msg:string)=>void} [opts.log]         Progress logger.
  * @returns {Promise<Buffer>} The .pptx file contents.
  */
 async function convertHtmlToPptx(htmlPath, opts = {}) {
   const slideSelector = opts.slideSelector || '.slide';
+  const lockLineBreaks = opts.lockLineBreaks !== false;
   const log = opts.log || (() => {});
   const bundlePath = resolveBundlePath();
 
@@ -65,6 +153,15 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
 
     // Wait for web fonts so dom-to-pptx measures the real glyph metrics.
     await page.evaluate(() => document.fonts && document.fonts.ready);
+
+    // Bake the browser's exact line-wrap positions into the DOM as <br>.
+    // dom-to-pptx only emits hard breaks for block boundaries / existing <br>;
+    // soft wraps are left to PowerPoint, which re-flows them with slightly
+    // different metrics. Freezing them here keeps line breaks faithful.
+    if (lockLineBreaks) {
+      const broken = await page.evaluate(bakeLineBreaksInPage, slideSelector);
+      log(`  → locked ${broken} soft line break(s) to match the HTML`);
+    }
 
     // Verify slides exist before injecting the (heavy) converter bundle.
     const count = await page.$$eval(slideSelector, (els) => els.length);
