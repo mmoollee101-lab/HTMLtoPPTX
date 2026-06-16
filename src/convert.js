@@ -161,6 +161,94 @@ function bakeLineBreaksInPage(slideSelector) {
 }
 
 /**
+ * Runs INSIDE the page. Two general fidelity fixes applied before export:
+ *
+ *  1) Inline horizontal margins -> spaces. dom-to-pptx concatenates adjacent
+ *     inline runs with no gap, so a `<span style="margin-left:6px">mm</span>`
+ *     ends up touching the previous run ("±0.1mm" instead of "±0.1 mm"). We turn
+ *     the margin into an equivalent number of space characters.
+ *
+ *  2) Decorative ::before/::after -> real elements. A pseudo with empty text but
+ *     a background/border (e.g. a bullet drawn as a 9px border-radius:50% circle)
+ *     is invisible to dom-to-pptx (no text). We materialize it as a real filled
+ *     span at the same position/size so it gets exported as a shape.
+ *
+ * @returns {{gaps:number, markers:number}}
+ */
+function enhanceFidelityInPage(slideSelector) {
+  const slides = Array.from(document.querySelectorAll(slideSelector));
+  let gaps = 0;
+  let markers = 0;
+  const isInline = (d) => d.startsWith('inline');
+
+  for (const slide of slides) {
+    const all = Array.from(slide.querySelectorAll('*'));
+
+    // 1) inline horizontal margins -> spaces
+    for (const el of all) {
+      const cs = getComputedStyle(el);
+      if (!isInline(cs.display)) continue;
+      const fs = parseFloat(cs.fontSize) || 16;
+      const spaceW = 0.25 * fs || 4;
+      const spaces = (px) => ' '.repeat(Math.min(3, Math.max(1, Math.round(px / spaceW))));
+      const ml = parseFloat(cs.marginLeft) || 0;
+      const mr = parseFloat(cs.marginRight) || 0;
+      const prev = el.previousSibling;
+      const next = el.nextSibling;
+      if (ml >= 2 && prev && (prev.textContent || '').trim() && !/\s$/.test(prev.textContent || '')) {
+        el.parentNode.insertBefore(document.createTextNode(spaces(ml)), el);
+        gaps++;
+      }
+      if (mr >= 2 && next && (next.textContent || '').trim() && !/^\s/.test(next.textContent || '')) {
+        el.parentNode.insertBefore(document.createTextNode(spaces(mr)), next);
+        gaps++;
+      }
+    }
+
+    // 2) decorative ::before / ::after drawn shapes -> real filled spans
+    for (const el of all) {
+      for (const which of ['::before', '::after']) {
+        const cs = getComputedStyle(el, which);
+        if (!cs || cs.content === 'none') continue;
+        if (cs.position !== 'absolute') continue; // drawn markers are positioned
+        const text = cs.content.replace(/^["']|["']$/g, '');
+        if (text) continue; // pseudo TEXT (icons) already export via dom-to-pptx
+        const w = parseFloat(cs.width) || 0;
+        const h = parseFloat(cs.height) || 0;
+        if (w <= 0 || h <= 0 || w > 80 || h > 80) continue; // only small markers
+        if (w / h > 2 || h / w > 2) continue; // square-ish only (skip bars/underlines)
+        const bg = cs.backgroundColor;
+        const hasBg = bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent';
+        const bwid = parseFloat(cs.borderTopWidth) || 0;
+        const hasBorder = bwid > 0 && cs.borderTopStyle !== 'none';
+        if (!hasBg && !hasBorder) continue;
+
+        // dom-to-pptx exports absolutely-positioned TEXT boxes reliably (like a
+        // page number) but ignores background-only boxes, so render the marker as
+        // a glyph: ● for a filled dot, ○ for an outlined ring.
+        const round = (parseFloat(cs.borderRadius) || 0) > 0 || cs.borderRadius.includes('%');
+        const glyph = hasBg ? (round ? '●' : '■') : round ? '○' : '□';
+        const fill = hasBg ? bg : cs.borderTopColor;
+        if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+        const dot = document.createElement('span');
+        dot.textContent = glyph;
+        // size the glyph (~0.78em visual) to roughly match the marker box
+        const fontPx = Math.max(w, h) / 0.78;
+        dot.style.cssText =
+          `position:absolute;pointer-events:none;white-space:nowrap;` +
+          `left:${cs.left};top:${cs.top};` +
+          `width:${cs.width};height:${cs.height};` +
+          `font-size:${fontPx}px;line-height:${h}px;color:${fill};` +
+          (cs.transform !== 'none' ? `transform:${cs.transform};` : '');
+        el.insertBefore(dot, el.firstChild);
+        markers++;
+      }
+    }
+  }
+  return { gaps, markers };
+}
+
+/**
  * Find embeddable web fonts (Node side, so cross-origin CSS isn't blocked).
  *
  * dom-to-pptx's autoEmbedFonts reads @font-face via the page's cssRules, which
@@ -399,6 +487,15 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     if (deck.isDeckStage && !userPickedSelector) {
       slideSelector = 'deck-stage > section';
       log(`  → detected <deck-stage> deck → selector "${slideSelector}"`);
+    }
+
+    // General fidelity fixes (inline-margin gaps, decorative pseudo markers)
+    // before measuring/baking so they're reflected in the captured layout.
+    if (opts.enhanceFidelity !== false) {
+      const fx = await page.evaluate(enhanceFidelityInPage, slideSelector);
+      if (fx.gaps || fx.markers) {
+        log(`  → fidelity fixes: ${fx.gaps} inline gap(s), ${fx.markers} marker(s)`);
+      }
     }
 
     // Bake the browser's exact line-wrap positions into the DOM as <br>.

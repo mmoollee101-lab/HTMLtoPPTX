@@ -29,6 +29,7 @@ Options:
   -o, --out <path>       output .pptx (single) or output directory (batch)
   --no-lock-breaks       don't freeze line breaks; let PowerPoint re-flow text
   --no-embed-fonts       don't embed web fonts (smaller file; may shift layout)
+  --no-enhance           skip fidelity fixes (inline-gap spaces, drawn markers)
   --print / --no-print   force / disable the print layout (see below)
   -h, --help             show this help
 
@@ -59,7 +60,7 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
 }
 
 function parseArgs(argv) {
-  const args = { _: [], selector: null, out: null, help: false, lockBreaks: true, print: undefined, embedFonts: true };
+  const args = { _: [], selector: null, out: null, help: false, lockBreaks: true, print: undefined, embedFonts: true, enhanceFidelity: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h' || a === '--help') args.help = true;
@@ -69,6 +70,7 @@ function parseArgs(argv) {
     else if (a === '--print') args.print = true;
     else if (a === '--no-print') args.print = false;
     else if (a === '--no-embed-fonts') args.embedFonts = false;
+    else if (a === '--no-enhance') args.enhanceFidelity = false;
     else args._.push(a);
   }
   return args;
@@ -85,6 +87,7 @@ async function convertOne(htmlPath, outPath, selector, browser, opts = {}) {
     lockLineBreaks: opts.lockBreaks,
     printMedia: opts.print,
     embedFonts: opts.embedFonts,
+    enhanceFidelity: opts.enhanceFidelity,
     browser,
     log: (m) => console.log(m),
   });
