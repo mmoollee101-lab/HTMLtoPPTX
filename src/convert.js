@@ -15,6 +15,8 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const JSZip = require('jszip');
+const fonteditor = require('fonteditor-core');
+const pako = require('pako');
 
 /**
  * Force every text box in a .pptx to wrap="none" so PowerPoint never re-wraps a
@@ -175,9 +177,17 @@ async function resolveEmbeddableFonts(page, pageBaseUrl) {
 
       let abs;
       try { abs = new URL(pick[1], baseUrl).href; } catch (_) { continue; }
-      const dist = Math.abs(weight - 400); // prefer the Regular weight
-      const prev = byFamily.get(family);
-      if (!prev || dist < prev.dist) byFamily.set(family, { url: abs, dist });
+
+      const slot = byFamily.get(family) || { reg: null, bold: null };
+      // Keep the weight closest to 400 for regular and closest to 700 for bold,
+      // so bold/heavy text (e.g. a 900 title) embeds a real bold face instead of
+      // being faux-bolded from Regular.
+      const regDist = Math.abs(weight - 400);
+      const boldDist = Math.abs(weight - 700);
+      if (!slot.reg || regDist < slot.reg.dist) slot.reg = { url: abs, dist: regDist };
+      if (weight >= 600 && (!slot.bold || boldDist < slot.bold.dist))
+        slot.bold = { url: abs, dist: boldDist };
+      byFamily.set(family, slot);
     }
   };
 
@@ -190,7 +200,101 @@ async function resolveEmbeddableFonts(page, pageBaseUrl) {
       /* unreachable stylesheet — skip */
     }
   }
-  return [...byFamily].map(([name, v]) => ({ name, url: v.url }));
+  return [...byFamily]
+    .filter(([, v]) => v.reg)
+    .map(([name, v]) => ({ name, url: v.reg.url, boldUrl: v.bold && v.bold.url }));
+}
+
+/** Fetch a web font and convert it to EOT (fntdata) for PowerPoint embedding. */
+async function fontUrlToEot(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('font fetch failed: ' + url);
+  const ab = await res.arrayBuffer();
+  const ext = url.split('.').pop().split(/[?#]/)[0].toLowerCase();
+  const type = ext === 'woff' ? 'woff' : ext === 'otf' ? 'otf' : 'ttf';
+  const font = fonteditor.Font.create(Buffer.from(ab), {
+    type,
+    hinting: true,
+    inflate: type === 'woff' ? pako.inflate : undefined,
+  });
+  const eot = font.write({ type: 'eot', toBuffer: true });
+  return Buffer.isBuffer(eot) ? eot : Buffer.from(eot);
+}
+
+/**
+ * dom-to-pptx embeds only a Regular face per family, so bold runs are faux-bolded
+ * and look lighter than the real font. Add a real bold face: for each family that
+ * actually has bold text, embed its bold weight into the <p:bold> slot.
+ *
+ * @param {Buffer} buf    the .pptx (already has Regular faces embedded)
+ * @param {Array<{name:string,boldUrl?:string}>} fonts
+ * @param {(m:string)=>void} log
+ */
+async function embedBoldWeights(buf, fonts, log) {
+  const candidates = fonts.filter((f) => f.boldUrl);
+  if (!candidates.length) return buf;
+
+  const zip = await JSZip.loadAsync(buf);
+  const presFile = zip.file('ppt/presentation.xml');
+  const relsFile = zip.file('ppt/_rels/presentation.xml.rels');
+  if (!presFile || !relsFile) return buf;
+
+  // Which families are actually used in bold somewhere? (avoid bloating the file)
+  const slideNames = Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n));
+  const usedBold = new Set();
+  for (const n of slideNames) {
+    const xml = await zip.file(n).async('string');
+    // Each run: an rPr (maybe b="1") followed by its <a:latin typeface="...">.
+    for (const run of xml.split('<a:rPr').slice(1)) {
+      const head = run.slice(0, 400);
+      if (!/\bb="1"/.test(head)) continue;
+      const tf = head.match(/typeface="([^"]+)"/);
+      if (tf) usedBold.add(tf[1]);
+    }
+  }
+
+  const targets = candidates.filter((f) => usedBold.has(f.name));
+  if (!targets.length) return buf;
+
+  let pres = await presFile.async('string');
+  let rels = await relsFile.async('string');
+  let maxR = Math.max(0, ...[...rels.matchAll(/Id="rId(\d+)"/g)].map((m) => +m[1]));
+  let maxFont = Math.max(
+    0,
+    ...Object.keys(zip.files)
+      .map((n) => (n.match(/ppt\/fonts\/(\d+)\.fntdata$/) || [])[1])
+      .filter(Boolean)
+      .map(Number)
+  );
+
+  const added = [];
+  for (const f of targets) {
+    let eot;
+    try {
+      eot = await fontUrlToEot(f.boldUrl);
+    } catch (_) {
+      continue;
+    }
+    maxFont++;
+    maxR++;
+    const file = `${maxFont}.fntdata`;
+    const rid = `rId${maxR}`;
+    zip.file(`ppt/fonts/${file}`, eot);
+    rels = rels.replace(
+      '</Relationships>',
+      `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font" Target="fonts/${file}"/></Relationships>`
+    );
+    const esc = f.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(<p:font typeface="${esc}"/>\\s*<p:regular[^>]*/>)`);
+    if (re.test(pres)) {
+      pres = pres.replace(re, `$1<p:bold r:id="${rid}"/>`);
+      added.push(f.name);
+    }
+  }
+  zip.file('ppt/presentation.xml', pres);
+  zip.file('ppt/_rels/presentation.xml.rels', rels);
+  if (added.length && log) log(`  → embedded bold weight for: ${added.join(', ')}`);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 /** Resolve the browser bundle that exposes the global `domToPptx`. */
@@ -350,6 +454,15 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
       // Disable text-box wrapping so PowerPoint keeps the baked line breaks and
       // never splits a word when substituting a wider fallback font.
       buf = await forceNoWrap(buf);
+    }
+    if (fonts.length) {
+      // dom-to-pptx only embeds a Regular face; add the real bold face so heavy
+      // text (e.g. a 900-weight title) doesn't render as faux-bolded Regular.
+      try {
+        buf = await embedBoldWeights(buf, fonts, log);
+      } catch (_) {
+        /* bold embedding is best-effort */
+      }
     }
     return buf;
   } finally {

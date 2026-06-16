@@ -23,7 +23,9 @@
   "license": "MIT",
   "dependencies": {
     "dom-to-pptx": "1.1.10",
+    "fonteditor-core": "^2.6.3",
     "jszip": "^3.10.1",
+    "pako": "^2.1.0",
     "puppeteer": "^23.0.0"
   }
 }
