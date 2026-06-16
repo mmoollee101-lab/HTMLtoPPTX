@@ -1,0 +1,27 @@
+{
+  "name": "html-to-pptx",
+  "version": "1.0.0",
+  "description": "Convert finished HTML decks into editable native PowerPoint (.pptx) files via dom-to-pptx + headless Chromium.",
+  "type": "commonjs",
+  "bin": {
+    "html2pptx": "src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/cli.js",
+    "web": "node src/server.js",
+    "sample": "node src/cli.js samples/sample.html"
+  },
+  "keywords": [
+    "html",
+    "pptx",
+    "powerpoint",
+    "puppeteer",
+    "dom-to-pptx",
+    "editable"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dom-to-pptx": "1.1.10",
+    "puppeteer": "^23.0.0"
+  }
+}

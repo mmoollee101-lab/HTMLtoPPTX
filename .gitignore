@@ -1,0 +1,6 @@
+node_modules/
+*.pptx
+samples/batch/out/
+samples/_check/
+*.log
+.DS_Store

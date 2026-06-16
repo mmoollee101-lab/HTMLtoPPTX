@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HTML → 편집가능 PPTX 변환기</title>
+<style>
+  :root { --blue:#2563eb; --ink:#1f2937; --line:#e5e7eb; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: 'Segoe UI', 'Noto Sans KR', system-ui, sans-serif;
+    background: #f3f4f6; color: var(--ink); display: flex; min-height: 100vh;
+    align-items: center; justify-content: center; padding: 24px;
+  }
+  .card {
+    background: #fff; width: 100%; max-width: 560px; border-radius: 18px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.10); padding: 36px;
+  }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  p.sub { margin: 0 0 26px; color: #6b7280; font-size: 14px; line-height: 1.6; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
+  .drop {
+    border: 2px dashed #c7d2fe; border-radius: 14px; padding: 30px; text-align: center;
+    cursor: pointer; transition: .15s; background: #f8faff;
+  }
+  .drop.hover { border-color: var(--blue); background: #eef2ff; }
+  .drop strong { color: var(--blue); }
+  .drop small { display:block; color:#9ca3af; margin-top:8px; }
+  input[type=text] {
+    width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 14px;
+  }
+  button {
+    margin-top: 24px; width: 100%; padding: 14px; border: 0; border-radius: 12px;
+    background: var(--blue); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .status { margin-top: 18px; font-size: 14px; text-align: center; min-height: 20px; }
+  .status.err { color: #dc2626; white-space: pre-wrap; text-align:left; }
+  .status.ok { color: #16a34a; }
+  .file-name { margin-top: 10px; font-size: 13px; color: var(--blue); font-weight: 600; }
+  .tips { margin-top: 26px; font-size: 12px; color: #9ca3af; line-height: 1.7;
+    border-top: 1px solid var(--line); padding-top: 16px; }
+  .spinner { display:inline-block; width:15px; height:15px; border:2px solid #c7d2fe;
+    border-top-color: var(--blue); border-radius:50%; animation: spin .7s linear infinite;
+    vertical-align:-2px; margin-right:8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>HTML → 편집가능 PPTX</h1>
+    <p class="sub">완성된 HTML 발표자료를 클릭하면 글자가 수정되는 네이티브 PowerPoint로 변환합니다.</p>
+
+    <div class="drop" id="drop">
+      <strong>HTML 파일 선택</strong> 또는 여기로 끌어다 놓기
+      <small>self-contained HTML 권장 (이미지·폰트는 절대 URL/데이터 URI)</small>
+      <div class="file-name" id="fileName"></div>
+    </div>
+    <input type="file" id="file" accept=".html,.htm" hidden />
+
+    <label for="selector">슬라이드 셀렉터</label>
+    <input type="text" id="selector" value=".slide" placeholder=".slide" />
+
+    <button id="go" disabled>PPTX로 변환 · 다운로드</button>
+    <div class="status" id="status"></div>
+
+    <div class="tips">
+      팁 · 고정 px(예: 1920×1080)로 만든 16:9 슬라이드를 권장합니다.<br />
+      Google Fonts 임베드는 &lt;link&gt;에 <code>crossorigin="anonymous"</code> 필요.<br />
+      한글은 <code>word-break: keep-all</code> + 텍스트박스 여유 공간 권장.
+    </div>
+  </div>
+
+<script>
+  const fileInput = document.getElementById('file');
+  const drop = document.getElementById('drop');
+  const fileName = document.getElementById('fileName');
+  const go = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  let htmlText = null, baseName = 'deck';
+
+  function setFile(f) {
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      htmlText = r.result;
+      baseName = f.name.replace(/\.html?$/i, '');
+      fileName.textContent = '📄 ' + f.name;
+      go.disabled = false;
+      statusEl.className = 'status';
+      statusEl.textContent = '';
+    };
+    r.readAsText(f, 'utf-8');
+  }
+
+  drop.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => setFile(e.target.files[0]));
+  ['dragover', 'dragenter'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('hover'); })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('hover'); })
+  );
+  drop.addEventListener('drop', (e) => setFile(e.dataTransfer.files[0]));
+
+  go.addEventListener('click', async () => {
+    if (!htmlText) return;
+    go.disabled = true;
+    statusEl.className = 'status';
+    statusEl.innerHTML = '<span class="spinner"></span>변환 중… (폰트 임베드/렌더링)';
+    try {
+      const res = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html: htmlText,
+          selector: document.getElementById('selector').value || '.slide',
+          name: baseName,
+        }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(error || '변환 실패');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = baseName + '.pptx'; a.click();
+      URL.revokeObjectURL(url);
+      statusEl.className = 'status ok';
+      statusEl.textContent = '✓ 완료 — ' + baseName + '.pptx 다운로드됨';
+    } catch (err) {
+      statusEl.className = 'status err';
+      statusEl.textContent = '✗ ' + err.message;
+    } finally {
+      go.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

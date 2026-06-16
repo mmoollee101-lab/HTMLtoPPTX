@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>HTML → PPTX 샘플 덱</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap"
+  rel="stylesheet"
+  crossorigin="anonymous"
+/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #2b2b2b; }
+  /* Fixed-pixel 16:9 slides (1920x1080) — recommended for stable scaling. */
+  .slide {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    background: #ffffff;
+    font-family: 'Noto Sans KR', sans-serif;
+    color: #1f2937;
+    overflow: hidden;
+    margin: 24px auto;
+    word-break: keep-all;
+  }
+  .slide .accent { position: absolute; left: 0; top: 0; width: 18px; height: 100%; }
+  .title { position: absolute; left: 120px; top: 120px; font-size: 96px; font-weight: 900; }
+  .subtitle { position: absolute; left: 124px; top: 250px; font-size: 40px; color: #6b7280; font-weight: 400; }
+
+  /* Slide 1 */
+  #s1 { background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%); color: #fff; }
+  #s1 .title { color: #fff; }
+  #s1 .subtitle { color: rgba(255,255,255,0.85); }
+  #s1 .foot { position: absolute; left: 124px; bottom: 90px; font-size: 32px; color: rgba(255,255,255,0.8); }
+
+  /* Slide 2: bullets + image */
+  .bullets { position: absolute; left: 124px; top: 360px; font-size: 44px; line-height: 1.7; max-width: 980px; }
+  .bullets li { margin-bottom: 22px; list-style: none; padding-left: 56px; position: relative; }
+  .bullets li::before { content: '▶'; position: absolute; left: 0; color: #2563eb; font-size: 32px; top: 6px; }
+  .shot {
+    position: absolute; right: 120px; top: 360px; width: 620px; height: 420px;
+    border-radius: 24px; object-fit: cover;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+  }
+
+  /* Slide 3: SVG chart */
+  .chart-wrap { position: absolute; left: 124px; top: 360px; }
+  .legend { position: absolute; right: 160px; top: 400px; font-size: 38px; line-height: 2; }
+  .legend .dot { display: inline-block; width: 28px; height: 28px; border-radius: 6px; margin-right: 18px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+  <!-- Slide 1: Title -->
+  <section class="slide" id="s1">
+    <div class="accent" style="background:#0b3a8a;"></div>
+    <h1 class="title">분기 사업 리뷰</h1>
+    <p class="subtitle">2026년 2분기 · 편집 가능한 발표 템플릿</p>
+    <p class="foot">발표자: 홍길동 · 전략기획팀</p>
+  </section>
+
+  <!-- Slide 2: Bullets + image -->
+  <section class="slide" id="s2">
+    <div class="accent" style="background:#2563eb;"></div>
+    <h1 class="title">핵심 성과 요약</h1>
+    <p class="subtitle">이번 분기의 주요 지표와 변화</p>
+    <ul class="bullets">
+      <li>신규 고객 전환율이 전 분기 대비 <b>32% 상승</b>했습니다.</li>
+      <li>월간 활성 사용자(MAU)가 <b>120만 명</b>을 돌파했습니다.</li>
+      <li>고객 이탈률을 <b>4.1%</b>까지 안정적으로 낮췄습니다.</li>
+      <li>신규 채널 3곳에서 의미 있는 매출이 발생했습니다.</li>
+    </ul>
+    <img class="shot" alt="제품 화면"
+      src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1240&q=80" crossorigin="anonymous" />
+  </section>
+
+  <!-- Slide 3: SVG bar chart -->
+  <section class="slide" id="s3">
+    <div class="accent" style="background:#16a34a;"></div>
+    <h1 class="title">분기별 매출 추이</h1>
+    <p class="subtitle">단위: 억 원 (벡터 SVG → PPTX에서도 편집 가능)</p>
+    <div class="chart-wrap">
+      <svg width="980" height="520" viewBox="0 0 980 520" xmlns="http://www.w3.org/2000/svg">
+        <line x1="80" y1="20" x2="80" y2="460" stroke="#9ca3af" stroke-width="2"/>
+        <line x1="80" y1="460" x2="940" y2="460" stroke="#9ca3af" stroke-width="2"/>
+        <rect x="160" y="300" width="120" height="160" fill="#93c5fd"/>
+        <rect x="360" y="230" width="120" height="230" fill="#60a5fa"/>
+        <rect x="560" y="150" width="120" height="310" fill="#3b82f6"/>
+        <rect x="760" y="80"  width="120" height="380" fill="#2563eb"/>
+        <text x="220" y="500" font-size="34" text-anchor="middle" fill="#374151">Q1</text>
+        <text x="420" y="500" font-size="34" text-anchor="middle" fill="#374151">Q2</text>
+        <text x="620" y="500" font-size="34" text-anchor="middle" fill="#374151">Q3</text>
+        <text x="820" y="500" font-size="34" text-anchor="middle" fill="#374151">Q4</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <div><span class="dot" style="background:#2563eb;"></span>매출 (억 원)</div>
+      <div style="font-size:30px;color:#6b7280;margin-top:24px;">전년 대비 꾸준한 우상향 추세를<br/>유지하고 있습니다.</div>
+    </div>
+  </section>
+
+</body>
+</html>
