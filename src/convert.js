@@ -14,14 +14,42 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const JSZip = require('jszip');
+
+/**
+ * Force every text box in a .pptx to wrap="none" so PowerPoint never re-wraps a
+ * line (we've already baked the on-screen breaks). This prevents a wider
+ * fallback font from splitting a word like "유정희" into "유정 / 희".
+ *
+ * @param {Buffer} buf  the .pptx file bytes
+ * @returns {Promise<Buffer>} a new .pptx with wrapping disabled
+ */
+async function forceNoWrap(buf) {
+  const zip = await JSZip.loadAsync(buf);
+  const slideFiles = Object.keys(zip.files).filter((n) =>
+    /^ppt\/slides\/slide\d+\.xml$/.test(n)
+  );
+  for (const name of slideFiles) {
+    let xml = await zip.file(name).async('string');
+    // bodyPr with wrap="square" -> "none"; bodyPr missing wrap -> add wrap="none".
+    xml = xml
+      .replace(/(<a:bodyPr\b[^>]*?)\swrap="square"/g, '$1 wrap="none"')
+      .replace(/<a:bodyPr\b(?![^>]*\bwrap=)/g, '<a:bodyPr wrap="none"');
+    zip.file(name, xml);
+  }
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+}
 
 /**
  * Runs INSIDE the browser page (serialized by puppeteer — must be self-contained).
  *
- * For every "leaf" text block under `slideSelector`, measure where the browser
- * actually wraps each line (via Range.getClientRects per character) and insert a
- * real <br> at each wrap point. dom-to-pptx then emits those as hard PPTX line
- * breaks, so PowerPoint reproduces the on-screen line breaks instead of re-wrapping.
+ * Two passes per slide:
+ *   1) Bake breaks — for each deepest block that owns a line box, measure where
+ *      the browser wraps (via Range rects) and insert a real <br> at each wrap.
+ *   2) Freeze wrap — set `white-space: nowrap` on those owners so dom-to-pptx
+ *      exports the text boxes with wrap disabled. Together this means PowerPoint
+ *      shows the on-screen line breaks and never re-wraps a word (e.g. it won't
+ *      split "유정희" into "유정 / 희" just because a fallback font is wider).
  *
  * @returns {number} how many <br> were inserted.
  */
@@ -29,40 +57,34 @@ function bakeLineBreaksInPage(slideSelector) {
   const slides = Array.from(document.querySelectorAll(slideSelector));
   let inserted = 0;
 
-  // A "leaf block" owns a line box: it has text and no block-level element child.
-  function isInline(el) {
-    const d = getComputedStyle(el).display;
+  function isInlineDisp(d) {
     return d.startsWith('inline') || d === 'contents';
   }
-  function isLeafBlock(el) {
-    let hasText = false;
-    for (const n of el.childNodes) {
-      if (n.nodeType === 3 && n.textContent.trim()) hasText = true;
-      if (n.nodeType === 1 && n.tagName !== 'BR' && !isInline(n)) return false;
+  // The deepest block-level element whose content is entirely inline (text,
+  // spans, <br>) — i.e. it owns exactly one set of line boxes.
+  function isLineOwner(el) {
+    const d = getComputedStyle(el).display;
+    if (d === 'none' || isInlineDisp(d)) return false; // must be block-ish
+    if (!(el.textContent && el.textContent.trim())) return false;
+    for (const c of el.children) {
+      if (c.tagName === 'BR') continue;
+      if (!isInlineDisp(getComputedStyle(c).display)) return false; // has a block child
     }
-    return hasText;
+    return true;
   }
 
-  function bake(block) {
-    const ws = getComputedStyle(block).whiteSpace;
-    if (ws === 'pre' || ws === 'nowrap') return; // already exact / never wraps
-    const lhRaw = parseFloat(getComputedStyle(block).lineHeight);
-    const fs = parseFloat(getComputedStyle(block).fontSize) || 16;
-    const lineH = isNaN(lhRaw) ? fs * 1.2 : lhRaw;
-    const threshold = Math.max(3, lineH * 0.5);
-
-    // Walk text nodes AND <br> in document order so existing breaks reset state.
+  function bake(owner) {
     const walker = document.createTreeWalker(
-      block,
+      owner,
       NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
     );
     const range = document.createRange();
     const cuts = []; // {node, offset} where a new visual line begins
-    let lastTop = null;
+    let prev = null; // previous char rect {top, bottom, h}
     let node;
     while ((node = walker.nextNode())) {
       if (node.nodeType === 1) {
-        if (node.tagName === 'BR') lastTop = null; // hard break already there
+        if (node.tagName === 'BR') prev = null; // existing hard break resets
         continue;
       }
       const len = node.textContent.length;
@@ -71,15 +93,22 @@ function bakeLineBreaksInPage(slideSelector) {
         range.setEnd(node, i + 1);
         const rects = range.getClientRects();
         if (!rects.length) continue;
-        const top = rects[rects.length - 1].top;
-        if (lastTop !== null && top > lastTop + threshold) {
-          cuts.push({ node, offset: i });
+        const r = rects[rects.length - 1];
+        const cur = { top: r.top, bottom: r.bottom, h: r.height };
+        if (prev) {
+          // New line = the two chars barely overlap vertically AND the current
+          // one sits lower. This ignores same-line size changes (big name +
+          // small suffix share a baseline and overlap), catching only real wraps.
+          const overlap = Math.min(prev.bottom, cur.bottom) - Math.max(prev.top, cur.top);
+          const minH = Math.min(prev.h, cur.h) || 1;
+          if (overlap < 0.3 * minH && cur.top >= prev.top - 1) {
+            cuts.push({ node, offset: i });
+          }
         }
-        lastTop = top;
+        prev = cur;
       }
     }
 
-    // Insert from last to first so earlier offsets stay valid.
     for (let k = cuts.length - 1; k >= 0; k--) {
       const { node: n, offset } = cuts[k];
       const br = document.createElement('br');
@@ -93,10 +122,15 @@ function bakeLineBreaksInPage(slideSelector) {
   }
 
   for (const slide of slides) {
-    slide.querySelectorAll('*').forEach((el) => {
-      if (isLeafBlock(el)) bake(el);
-    });
+    const owners = Array.from(slide.querySelectorAll('*')).filter(isLineOwner);
+    for (const owner of owners) {
+      const ws = getComputedStyle(owner).whiteSpace;
+      if (ws === 'pre' || ws === 'pre-wrap' || ws === 'nowrap') continue; // exact / no auto-wrap already
+      bake(owner);
+    }
   }
+  // The actual wrap-disable happens after export (forceNoWrap on the .pptx),
+  // which reliably covers every text box regardless of dom-to-pptx's path.
   return inserted;
 }
 
@@ -239,7 +273,13 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     if (!base64) {
       throw new Error('Conversion returned empty output.');
     }
-    return Buffer.from(base64, 'base64');
+    let buf = Buffer.from(base64, 'base64');
+    if (lockLineBreaks) {
+      // Disable text-box wrapping so PowerPoint keeps the baked line breaks and
+      // never splits a word when substituting a wider fallback font.
+      buf = await forceNoWrap(buf);
+    }
+    return buf;
   } finally {
     await page.close().catch(() => {});
     if (ownBrowser) {

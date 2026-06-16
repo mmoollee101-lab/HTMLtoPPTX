@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "dom-to-pptx": "1.1.10",
+    "jszip": "^3.10.1",
     "puppeteer": "^23.0.0"
   }
 }
