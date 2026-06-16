@@ -134,6 +134,65 @@ function bakeLineBreaksInPage(slideSelector) {
   return inserted;
 }
 
+/**
+ * Find embeddable web fonts (Node side, so cross-origin CSS isn't blocked).
+ *
+ * dom-to-pptx's autoEmbedFonts reads @font-face via the page's cssRules, which
+ * throws for cross-origin CDN stylesheets — so CDN fonts (Pretendard, etc.) end
+ * up NOT embedded, and PowerPoint substitutes a wider fallback that shifts the
+ * layout (e.g. a name and its title run into each other). Here we fetch each
+ * stylesheet ourselves, pull the @font-face URLs, and prefer woff/ttf/otf (NOT
+ * woff2 — the embedder can't decode it) so they can be embedded.
+ *
+ * @returns {Promise<Array<{name:string,url:string}>>} fonts for options.fonts
+ */
+async function resolveEmbeddableFonts(page, pageBaseUrl) {
+  const sources = await page.evaluate(() => ({
+    links: Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).map((l) => l.href),
+    inline: Array.from(document.querySelectorAll('style')).map((s) => s.textContent),
+  }));
+
+  const faceRe = /@font-face\s*\{([^}]*)\}/gi;
+  const byFamily = new Map(); // family -> { url, dist }
+
+  const consider = (css, baseUrl) => {
+    let m;
+    while ((m = faceRe.exec(css))) {
+      const body = m[1];
+      const famM = body.match(/font-family\s*:\s*([^;]+)/i);
+      if (!famM) continue;
+      const family = famM[1].trim().replace(/^['"]|['"]$/g, '');
+      const weight = parseInt((body.match(/font-weight\s*:\s*(\d+)/i) || [])[1], 10) || 400;
+
+      // url(...) format('woff'|'truetype'|'opentype') — skip woff2.
+      const urls = [...body.matchAll(/url\(\s*['"]?([^'")]+?)['"]?\s*\)\s*format\(\s*['"]?([\w-]+)/gi)];
+      let pick = urls.find((u) => /^(woff|truetype|opentype)$/i.test(u[2]));
+      if (!pick) {
+        const bare = body.match(/url\(\s*['"]?([^'")]+?\.(?:woff|ttf|otf))(?:[?#][^'")]*)?['"]?\s*\)/i);
+        if (bare) pick = [bare[0], bare[1]];
+      }
+      if (!pick) continue;
+
+      let abs;
+      try { abs = new URL(pick[1], baseUrl).href; } catch (_) { continue; }
+      const dist = Math.abs(weight - 400); // prefer the Regular weight
+      const prev = byFamily.get(family);
+      if (!prev || dist < prev.dist) byFamily.set(family, { url: abs, dist });
+    }
+  };
+
+  for (const css of sources.inline) consider(css, pageBaseUrl);
+  for (const href of sources.links) {
+    try {
+      const r = await fetch(href);
+      if (r.ok) consider(await r.text(), href);
+    } catch (_) {
+      /* unreachable stylesheet — skip */
+    }
+  }
+  return [...byFamily].map(([name, v]) => ({ name, url: v.url }));
+}
+
 /** Resolve the browser bundle that exposes the global `domToPptx`. */
 function resolveBundlePath() {
   // require.resolve('dom-to-pptx') -> .../dist/dom-to-pptx.cjs
@@ -250,14 +309,27 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     }
     log(`  → found ${count} slide(s) for selector "${slideSelector}"`);
 
+    // Resolve web fonts to embeddable (woff/ttf/otf) URLs so PowerPoint renders
+    // the real font instead of a wider fallback that shifts the layout.
+    let fonts = [];
+    if (opts.embedFonts !== false) {
+      try {
+        fonts = await resolveEmbeddableFonts(page, fileUrl);
+        if (fonts.length) log(`  → embedding font(s): ${fonts.map((f) => f.name).join(', ')}`);
+      } catch (_) {
+        /* font resolution is best-effort */
+      }
+    }
+
     await page.addScriptTag({ path: bundlePath });
 
     log('  → converting (embedding fonts, vectorizing SVG)…');
-    const base64 = await page.evaluate(async (sel) => {
+    const base64 = await page.evaluate(async (sel, fonts) => {
       const els = Array.from(document.querySelectorAll(sel));
       const blob = await domToPptx.exportToPptx(els, {
         skipDownload: true,
         autoEmbedFonts: true,
+        fonts, // explicit woff/ttf/otf URLs resolved Node-side
         svgAsVector: true,
         layout: 'LAYOUT_16x9',
       });
@@ -268,7 +340,7 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-    }, slideSelector);
+    }, slideSelector, fonts);
 
     if (!base64) {
       throw new Error('Conversion returned empty output.');

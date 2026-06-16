@@ -28,6 +28,7 @@ Options:
   -s, --selector <css>   CSS selector for each slide   (default: auto / ".slide")
   -o, --out <path>       output .pptx (single) or output directory (batch)
   --no-lock-breaks       don't freeze line breaks; let PowerPoint re-flow text
+  --no-embed-fonts       don't embed web fonts (smaller file; may shift layout)
   --print / --no-print   force / disable the print layout (see below)
   -h, --help             show this help
 
@@ -47,8 +48,10 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
     with --print, or off with --no-print.
   • Author slides at a FIXED pixel size (e.g. 1920x1080). vw/vh/% units make the
     16:9 auto-scaling wobble.
-  • To embed Google Fonts, the source <link> needs  crossorigin="anonymous"  or
-    text falls back to Arial and line breaks shift.
+  • Web fonts are embedded automatically (woff/ttf/otf are fetched and bundled)
+    so PowerPoint uses the real font — otherwise a wider fallback shifts the
+    layout (e.g. a name and its title overlap). woff2-only fonts can't embed;
+    add a woff/ttf source. Use --no-embed-fonts for a smaller file.
   • For Korean text use  word-break: keep-all  and leave a little slack in text
     boxes so replacement copy doesn't overflow.
   • Need pixel-perfect & non-editable? Use a PDF export instead — out of scope here.
@@ -56,7 +59,7 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
 }
 
 function parseArgs(argv) {
-  const args = { _: [], selector: null, out: null, help: false, lockBreaks: true, print: undefined };
+  const args = { _: [], selector: null, out: null, help: false, lockBreaks: true, print: undefined, embedFonts: true };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h' || a === '--help') args.help = true;
@@ -65,6 +68,7 @@ function parseArgs(argv) {
     else if (a === '--no-lock-breaks') args.lockBreaks = false;
     else if (a === '--print') args.print = true;
     else if (a === '--no-print') args.print = false;
+    else if (a === '--no-embed-fonts') args.embedFonts = false;
     else args._.push(a);
   }
   return args;
@@ -75,11 +79,12 @@ function defaultOutFor(htmlPath) {
   return htmlPath.replace(/\.html?$/i, '') + '.pptx';
 }
 
-async function convertOne(htmlPath, outPath, selector, browser, lockBreaks, print) {
+async function convertOne(htmlPath, outPath, selector, browser, opts = {}) {
   const buf = await convertHtmlToPptx(htmlPath, {
     slideSelector: selector || undefined,
-    lockLineBreaks: lockBreaks,
-    printMedia: print,
+    lockLineBreaks: opts.lockBreaks,
+    printMedia: opts.print,
+    embedFonts: opts.embedFonts,
     browser,
     log: (m) => console.log(m),
   });
@@ -134,7 +139,7 @@ async function main() {
         const outPath = path.join(outDir, defaultOutFor(f).split(/[\\/]/).pop());
         console.log(`[${i + 1}/${files.length}] ${f}`);
         try {
-          await convertOne(htmlPath, outPath, args.selector, browser, args.lockBreaks, args.print);
+          await convertOne(htmlPath, outPath, args.selector, browser, args);
         } catch (err) {
           hadError = true;
           console.error(`  ✗ ${err.message}\n`);
@@ -144,7 +149,7 @@ async function main() {
       // ---- Single file ----
       const outPath = outArg || defaultOutFor(input);
       console.log(`Converting: ${input}`);
-      await convertOne(input, outPath, args.selector, undefined, args.lockBreaks, args.print);
+      await convertOne(input, outPath, args.selector, undefined, args);
     }
   } catch (err) {
     hadError = true;
