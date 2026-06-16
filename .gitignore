@@ -4,3 +4,10 @@ samples/batch/out/
 samples/_check/
 *.log
 .DS_Store
+
+# comparison generated images (keep scripts only)
+compare/html/
+compare/ppt/
+compare/pptx/
+compare/cmp/
+compare/*.pdf
