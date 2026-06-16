@@ -120,11 +120,15 @@ function resolveBundlePath() {
  * @param {import('puppeteer').Browser} [opts.browser]  Reuse an existing browser.
  * @param {boolean} [opts.lockLineBreaks=true] Bake the browser's exact soft-wrap
  *        positions into the DOM as <br> so PowerPoint can't re-flow them.
+ * @param {boolean} [opts.printMedia] Emulate `@media print`. Auto-enabled for
+ *        slideshow decks that stack one slide at a time (e.g. <deck-stage>), so
+ *        every slide is laid out, full-size and visible, for capture.
  * @param {(msg:string)=>void} [opts.log]         Progress logger.
  * @returns {Promise<Buffer>} The .pptx file contents.
  */
 async function convertHtmlToPptx(htmlPath, opts = {}) {
-  const slideSelector = opts.slideSelector || '.slide';
+  let slideSelector = opts.slideSelector || '.slide';
+  const userPickedSelector = !!opts.slideSelector;
   const lockLineBreaks = opts.lockLineBreaks !== false;
   const log = opts.log || (() => {});
   const bundlePath = resolveBundlePath();
@@ -153,6 +157,28 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
 
     // Wait for web fonts so dom-to-pptx measures the real glyph metrics.
     await page.evaluate(() => document.fonts && document.fonts.ready);
+
+    // Slideshow decks (e.g. the <deck-stage> web component) stack every slide
+    // at the same spot and show one at a time — the hidden ones would export as
+    // blank white slides. Such decks ship a print layout that lays them all out
+    // full-size and visible; detect them, switch to that layout, and capture the
+    // real slide unit (the slotted <section>s).
+    const deck = await page.evaluate(() => {
+      const decks = document.querySelectorAll('deck-stage');
+      // `noscale` tells the deck to render at authored size (1:1) for capture.
+      decks.forEach((d) => d.setAttribute('noscale', ''));
+      return { isDeckStage: decks.length > 0 };
+    });
+    const usePrint = opts.printMedia !== undefined ? opts.printMedia : deck.isDeckStage;
+    if (usePrint) {
+      await page.emulateMediaType('print');
+      await new Promise((r) => setTimeout(r, 400)); // let layout settle
+      log('  → using print layout (all slides laid out full-size)');
+    }
+    if (deck.isDeckStage && !userPickedSelector) {
+      slideSelector = 'deck-stage > section';
+      log(`  → detected <deck-stage> deck → selector "${slideSelector}"`);
+    }
 
     // Bake the browser's exact line-wrap positions into the DOM as <br>.
     // dom-to-pptx only emits hard breaks for block boundaries / existing <br>;

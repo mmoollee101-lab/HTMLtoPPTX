@@ -25,9 +25,10 @@ Usage:
   html2pptx <folder-of-html>        [output-dir]   [options]   (batch mode)
 
 Options:
-  -s, --selector <css>   CSS selector for each slide   (default: ".slide")
+  -s, --selector <css>   CSS selector for each slide   (default: auto / ".slide")
   -o, --out <path>       output .pptx (single) or output directory (batch)
   --no-lock-breaks       don't freeze line breaks; let PowerPoint re-flow text
+  --print / --no-print   force / disable the print layout (see below)
   -h, --help             show this help
 
 Examples:
@@ -40,6 +41,10 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
   • Line breaks are FROZEN by default: the exact on-screen wrap points are baked
     in so PowerPoint shows the same line breaks (each visual line = a paragraph).
     Pass --no-lock-breaks to let PowerPoint re-flow text instead.
+  • Slideshow decks (web components like <deck-stage>, reveal.js, etc.) stack
+    every slide and show one at a time. They are auto-detected and exported via
+    their print layout so all slides come out — not blank. Force this on any deck
+    with --print, or off with --no-print.
   • Author slides at a FIXED pixel size (e.g. 1920x1080). vw/vh/% units make the
     16:9 auto-scaling wobble.
   • To embed Google Fonts, the source <link> needs  crossorigin="anonymous"  or
@@ -51,13 +56,15 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
 }
 
 function parseArgs(argv) {
-  const args = { _: [], selector: '.slide', out: null, help: false, lockBreaks: true };
+  const args = { _: [], selector: null, out: null, help: false, lockBreaks: true, print: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h' || a === '--help') args.help = true;
     else if (a === '-s' || a === '--selector') args.selector = argv[++i];
     else if (a === '-o' || a === '--out') args.out = argv[++i];
     else if (a === '--no-lock-breaks') args.lockBreaks = false;
+    else if (a === '--print') args.print = true;
+    else if (a === '--no-print') args.print = false;
     else args._.push(a);
   }
   return args;
@@ -68,10 +75,11 @@ function defaultOutFor(htmlPath) {
   return htmlPath.replace(/\.html?$/i, '') + '.pptx';
 }
 
-async function convertOne(htmlPath, outPath, selector, browser, lockBreaks) {
+async function convertOne(htmlPath, outPath, selector, browser, lockBreaks, print) {
   const buf = await convertHtmlToPptx(htmlPath, {
-    slideSelector: selector,
+    slideSelector: selector || undefined,
     lockLineBreaks: lockBreaks,
+    printMedia: print,
     browser,
     log: (m) => console.log(m),
   });
@@ -126,7 +134,7 @@ async function main() {
         const outPath = path.join(outDir, defaultOutFor(f).split(/[\\/]/).pop());
         console.log(`[${i + 1}/${files.length}] ${f}`);
         try {
-          await convertOne(htmlPath, outPath, args.selector, browser, args.lockBreaks);
+          await convertOne(htmlPath, outPath, args.selector, browser, args.lockBreaks, args.print);
         } catch (err) {
           hadError = true;
           console.error(`  ✗ ${err.message}\n`);
@@ -136,7 +144,7 @@ async function main() {
       // ---- Single file ----
       const outPath = outArg || defaultOutFor(input);
       console.log(`Converting: ${input}`);
-      await convertOne(input, outPath, args.selector, undefined, args.lockBreaks);
+      await convertOne(input, outPath, args.selector, undefined, args.lockBreaks, args.print);
     }
   } catch (err) {
     hadError = true;

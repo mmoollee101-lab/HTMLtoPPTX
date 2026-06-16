@@ -70,7 +70,9 @@ async function handleConvert(req, res) {
   }
 
   const html = payload.html;
-  const selector = (payload.selector || '.slide').trim() || '.slide';
+  // Empty selector -> let the engine auto-detect (default ".slide", or the right
+  // unit for slideshow decks like <deck-stage>).
+  const selector = (payload.selector || '').trim() || undefined;
   const name = (payload.name || 'deck').replace(/\.html?$/i, '').replace(/[^\w.-]+/g, '_');
 
   if (!html || typeof html !== 'string') {
@@ -83,7 +85,7 @@ async function handleConvert(req, res) {
     fs.writeFileSync(tmp, html, 'utf8');
     const browser = await getBrowser();
     const buf = await convertHtmlToPptx(tmp, {
-      slideSelector: selector,
+      slideSelector: selector, // undefined -> auto
       browser,
       log: (m) => console.log(m.trim()),
     });
