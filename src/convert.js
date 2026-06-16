@@ -19,24 +19,48 @@ const fonteditor = require('fonteditor-core');
 const pako = require('pako');
 
 /**
- * Force every text box in a .pptx to wrap="none" so PowerPoint never re-wraps a
- * line (we've already baked the on-screen breaks). This prevents a wider
- * fallback font from splitting a word like "유정희" into "유정 / 희".
+ * Bump any paragraph whose fixed line spacing (a:spcPts) is smaller than its
+ * largest run — dom-to-pptx mis-computes line-height:1 on mixed-size inline text
+ * (e.g. a big "±0.1" with a small "mm"), producing a line box shorter than the
+ * glyphs, so PowerPoint squeezes/clips the big number and the layout looks off.
+ * Raising spcPts to the max font size restores the intended single-line height.
+ */
+function fixLineSpacing(xml) {
+  return xml.replace(/<a:p>[\s\S]*?<\/a:p>/g, (para) => {
+    const sizes = [...para.matchAll(/\bsz="(\d+)"/g)].map((m) => +m[1]);
+    if (!sizes.length) return para;
+    const maxSz = Math.max(...sizes);
+    return para.replace(
+      /(<a:spcPts val=")(\d+)("\s*\/>)/g,
+      (full, a, val, c) => (+val < maxSz ? `${a}${maxSz}${c}` : full)
+    );
+  });
+}
+
+/**
+ * Post-process the slide XML inside a .pptx:
+ *  - (when noWrap) force every text box to wrap="none" so PowerPoint keeps the
+ *    baked line breaks and never splits a word (e.g. "유정희" -> "유정 / 희").
+ *  - always fix too-small line spacing (see fixLineSpacing).
  *
  * @param {Buffer} buf  the .pptx file bytes
- * @returns {Promise<Buffer>} a new .pptx with wrapping disabled
+ * @param {{noWrap:boolean}} opts
+ * @returns {Promise<Buffer>}
  */
-async function forceNoWrap(buf) {
+async function postProcessSlides(buf, { noWrap }) {
   const zip = await JSZip.loadAsync(buf);
   const slideFiles = Object.keys(zip.files).filter((n) =>
     /^ppt\/slides\/slide\d+\.xml$/.test(n)
   );
   for (const name of slideFiles) {
     let xml = await zip.file(name).async('string');
-    // bodyPr with wrap="square" -> "none"; bodyPr missing wrap -> add wrap="none".
-    xml = xml
-      .replace(/(<a:bodyPr\b[^>]*?)\swrap="square"/g, '$1 wrap="none"')
-      .replace(/<a:bodyPr\b(?![^>]*\bwrap=)/g, '<a:bodyPr wrap="none"');
+    if (noWrap) {
+      // bodyPr with wrap="square" -> "none"; bodyPr missing wrap -> add wrap="none".
+      xml = xml
+        .replace(/(<a:bodyPr\b[^>]*?)\swrap="square"/g, '$1 wrap="none"')
+        .replace(/<a:bodyPr\b(?![^>]*\bwrap=)/g, '<a:bodyPr wrap="none"');
+    }
+    xml = fixLineSpacing(xml);
     zip.file(name, xml);
   }
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
@@ -450,11 +474,9 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
       throw new Error('Conversion returned empty output.');
     }
     let buf = Buffer.from(base64, 'base64');
-    if (lockLineBreaks) {
-      // Disable text-box wrapping so PowerPoint keeps the baked line breaks and
-      // never splits a word when substituting a wider fallback font.
-      buf = await forceNoWrap(buf);
-    }
+    // Always fix too-small line spacing; disable wrapping only when we baked the
+    // line breaks (so PowerPoint keeps them instead of re-flowing/word-splitting).
+    buf = await postProcessSlides(buf, { noWrap: lockLineBreaks });
     if (fonts.length) {
       // dom-to-pptx only embeds a Regular face; add the real bold face so heavy
       // text (e.g. a 900-weight title) doesn't render as faux-bolded Regular.
