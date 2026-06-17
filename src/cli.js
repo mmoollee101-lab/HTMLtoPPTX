@@ -30,6 +30,7 @@ Options:
   --no-lock-breaks       don't freeze line breaks; let PowerPoint re-flow text
   --no-embed-fonts       don't embed web fonts (smaller file; may shift layout)
   --no-enhance           skip fidelity fixes (inline-gap spaces, drawn markers)
+  --aspect <w:h>         force slide aspect ratio (default: auto-detect from HTML)
   --print / --no-print   force / disable the print layout (see below)
   -h, --help             show this help
 
@@ -71,6 +72,7 @@ function parseArgs(argv) {
     else if (a === '--no-print') args.print = false;
     else if (a === '--no-embed-fonts') args.embedFonts = false;
     else if (a === '--no-enhance') args.enhanceFidelity = false;
+    else if (a === '--aspect') args.aspect = argv[++i];
     else args._.push(a);
   }
   return args;
@@ -88,6 +90,7 @@ async function convertOne(htmlPath, outPath, selector, browser, opts = {}) {
     printMedia: opts.print,
     embedFonts: opts.embedFonts,
     enhanceFidelity: opts.enhanceFidelity,
+    aspect: opts.aspect,
     browser,
     log: (m) => console.log(m),
   });

@@ -432,6 +432,9 @@ function resolveBundlePath() {
  * @param {boolean} [opts.printMedia] Emulate `@media print`. Auto-enabled for
  *        slideshow decks that stack one slide at a time (e.g. <deck-stage>), so
  *        every slide is laid out, full-size and visible, for capture.
+ * @param {string} [opts.aspect] Force slide aspect ratio e.g. "16:9" or "4:3".
+ *        Default: auto-detect from the source slide's measured size (so 4:3,
+ *        portrait, ultrawide decks are not cropped to 16:9).
  * @param {(msg:string)=>void} [opts.log]         Progress logger.
  * @returns {Promise<Buffer>} The .pptx file contents.
  */
@@ -534,6 +537,23 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     }
     log(`  → found ${count} slide(s) for selector "${slideSelector}"`);
 
+    // Slide size = the SOURCE's own aspect ratio, so 4:3 / portrait / ultrawide
+    // decks aren't cropped to 16:9. Width is fixed at 10in; height follows the
+    // measured aspect. An explicit opts.aspect ("16:9") overrides auto-detect.
+    let aspect;
+    if (opts.aspect && /^\s*\d+(\.\d+)?\s*[:x/]\s*\d+(\.\d+)?\s*$/.test(opts.aspect)) {
+      const [aw, ah] = opts.aspect.split(/[:x/]/).map(Number);
+      aspect = aw / ah;
+    } else {
+      aspect = await page.$eval(slideSelector, (el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? r.width / r.height : 16 / 9;
+      });
+    }
+    const slideW = 10;
+    const slideH = +(slideW / aspect).toFixed(4);
+    log(`  → slide ${slideW}in × ${slideH}in (${aspect.toFixed(3)}:1${Math.abs(aspect - 16 / 9) < 0.02 ? ' ≈ 16:9' : ''})`);
+
     // Resolve web fonts to embeddable (woff/ttf/otf) URLs so PowerPoint renders
     // the real font instead of a wider fallback that shifts the layout.
     let fonts = [];
@@ -549,14 +569,15 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     await page.addScriptTag({ path: bundlePath });
 
     log('  → converting (embedding fonts, vectorizing SVG)…');
-    const base64 = await page.evaluate(async (sel, fonts) => {
+    const base64 = await page.evaluate(async (sel, fonts, dims) => {
       const els = Array.from(document.querySelectorAll(sel));
       const blob = await domToPptx.exportToPptx(els, {
         skipDownload: true,
         autoEmbedFonts: true,
         fonts, // explicit woff/ttf/otf URLs resolved Node-side
         svgAsVector: true,
-        layout: 'LAYOUT_16x9',
+        width: dims.w, // custom slide size matching the source aspect ratio
+        height: dims.h,
       });
       // Blob -> base64 data URL -> raw base64 string for transport to Node.
       return await new Promise((resolve, reject) => {
@@ -565,7 +586,7 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-    }, slideSelector, fonts);
+    }, slideSelector, fonts, { w: slideW, h: slideH });
 
     if (!base64) {
       throw new Error('Conversion returned empty output.');
