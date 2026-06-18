@@ -47,6 +47,7 @@ function fixLineSpacing(xml) {
  * @param {{noWrap:boolean}} opts
  * @returns {Promise<Buffer>}
  */
+
 async function postProcessSlides(buf, { noWrap }) {
   const zip = await JSZip.loadAsync(buf);
   const slideFiles = Object.keys(zip.files).filter((n) =>
@@ -223,35 +224,65 @@ function enhanceFidelityInPage(slideSelector) {
         const hasBorder = bwid > 0 && cs.borderTopStyle !== 'none';
         if (!hasBg && !hasBorder) continue;
 
-        // dom-to-pptx exports absolutely-positioned TEXT boxes reliably (like a
-        // page number) but ignores background-only boxes, so render the marker as
-        // a glyph: ● for a filled dot, ○ for an outlined ring.
+        // dom-to-pptx drops a background/border-only marker box, so the bullet would
+        // vanish; render it as a glyph: ● filled dot, ○ outlined ring, ■/□ square.
         const round = (parseFloat(cs.borderRadius) || 0) > 0 || cs.borderRadius.includes('%');
-        const glyph = hasBg ? (round ? '●' : '■') : round ? '○' : '□';
+        const glyph = hasBg ? (round ? '•' : '▪') : round ? '⚬' : '▫';
         const fill = hasBg ? bg : cs.borderTopColor;
-        const fontPx = Math.max(w, h) / 0.78; // ~0.78em visual ≈ the marker box
 
-        // Render the marker as its OWN absolutely-positioned text box anchored to
-        // the slide (not inside the host element). dom-to-pptx exports a standalone
-        // positioned text box reliably (like a page number); a glyph inserted inside
-        // the list item instead gets flattened into the item's text run and glued to
-        // it. Anchoring to the slide keeps the marker's size/color/position and
-        // leaves the item's own indent gap intact.
-        const elRect = el.getBoundingClientRect();
-        const slideRect = slide.getBoundingClientRect();
-        const mLeft = elRect.left + (parseFloat(cs.left) || 0) - slideRect.left;
-        const mTop = elRect.top + (parseFloat(cs.top) || 0) - slideRect.top;
-        if (getComputedStyle(slide).position === 'static') slide.style.position = 'relative';
-        const dot = document.createElement('span');
-        dot.textContent = glyph;
-        dot.style.cssText =
-          `position:absolute;pointer-events:none;white-space:nowrap;` +
-          `left:${mLeft}px;top:${mTop}px;width:${w}px;height:${h}px;` +
-          `display:flex;align-items:center;justify-content:center;` +
-          `font-size:${fontPx}px;line-height:1;color:${fill};` +
-          (cs.transform !== 'none' ? `transform:${cs.transform};` : '');
-        slide.appendChild(dot);
-        markers++;
+        // For a LEADING ::before bullet, merge "glyph + gap" into the item's first
+        // text run. dom-to-pptx collapses the item's padding-left and places the text
+        // at the element's left edge, so a separately-positioned marker box lands ON
+        // TOP of the text. Merging keeps the bullet in the SAME run with an NBSP gap
+        // (internal NBSP survives dom-to-pptx's trailing-space trimming) → "○  text".
+        const padL = parseFloat(getComputedStyle(el).paddingLeft) || 0;
+        const isLeadBullet = which === '::before' && (parseFloat(cs.left) || 0) <= padL + 2;
+        let tn = null;
+        if (isLeadBullet) {
+          const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+          let node;
+          while ((node = tw.nextNode())) { if (node.nodeValue && node.nodeValue.trim()) { tn = node; break; } }
+        }
+        if (tn) {
+          // Glyph in its OWN run: neutral marker color + the list item base size
+          // (so it does not inherit the emphasized first words it precedes). The gap
+          // is a braille blank (U+2800) — a non-whitespace blank, so dom-to-pptx
+          // does not trim it the way it trims a trailing space/NBSP between runs.
+          const glyphPx = (parseFloat(getComputedStyle(el).fontSize) || 16) * 1.25; // mid-line typographic bullet
+          const lead = glyph + '⠀';
+          const g = document.createElement('span');
+          g.textContent = lead;
+          g.style.cssText = `color:${fill};font-weight:400;font-size:${glyphPx}px;`;
+          el.insertBefore(g, el.firstChild);
+          // Hanging indent: dom-to-pptx splits a <br> into a separate paragraph at
+          // marL=0, so continuation lines would sit under the bullet. Prefix each with
+          // an invisible spacer the same width as the bullet+gap to align them under
+          // the text.
+          el.querySelectorAll('br').forEach((br) => {
+            const sp = document.createElement('span');
+            sp.textContent = lead;
+            sp.style.cssText = `color:transparent;font-weight:400;font-size:${glyphPx}px;`;
+            br.parentNode.insertBefore(sp, br.nextSibling);
+          });
+          markers++;
+        } else {
+          // Non-leading / text-less decoration: a standalone positioned glyph box is fine.
+          const fontPx = Math.max(w, h) / 0.78;
+          const elRect = el.getBoundingClientRect();
+          const slideRect = slide.getBoundingClientRect();
+          if (getComputedStyle(slide).position === 'static') slide.style.position = 'relative';
+          const dot = document.createElement('span');
+          dot.textContent = glyph;
+          dot.style.cssText =
+            `position:absolute;pointer-events:none;white-space:nowrap;` +
+            `left:${elRect.left + (parseFloat(cs.left) || 0) - slideRect.left}px;` +
+            `top:${elRect.top + (parseFloat(cs.top) || 0) - slideRect.top}px;` +
+            `width:${w}px;height:${h}px;display:flex;align-items:center;justify-content:center;` +
+            `font-size:${fontPx}px;line-height:1;color:${fill};` +
+            (cs.transform !== 'none' ? `transform:${cs.transform};` : '');
+          slide.appendChild(dot);
+          markers++;
+        }
       }
     }
   }
