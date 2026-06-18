@@ -1,6 +1,6 @@
 {
   "name": "html-to-pptx",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Convert finished HTML decks into editable native PowerPoint (.pptx) files via dom-to-pptx + headless Chromium.",
   "type": "commonjs",
   "main": "electron/main.js",
@@ -69,11 +69,17 @@
       "node_modules/fonteditor-core/**"
     ],
     "win": {
-      "target": "portable",
+      "target": "nsis",
       "icon": "public/icons/app.ico"
     },
-    "portable": {
-      "artifactName": "HTML-to-PPTX-${version}-portable.exe"
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HTML to PPTX",
+      "artifactName": "HTML-to-PPTX-${version}-setup.${ext}"
     }
   },
   "dependencies": {
