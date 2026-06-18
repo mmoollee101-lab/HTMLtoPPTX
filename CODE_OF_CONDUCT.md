@@ -42,10 +42,11 @@ is officially representing the community in public spaces.
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the
-maintainers at **256771501+mmoollee101-lab@users.noreply.github.com**. All complaints will be reviewed and investigated
-promptly and fairly. Maintainers are obligated to respect the privacy and security of the
-reporter of any incident.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported
+**privately to the maintainers** via GitHub's
+[private report form](https://github.com/mmoollee101-lab/HTMLtoPPTX/security/advisories/new).
+All complaints will be reviewed and investigated promptly and fairly. Maintainers are
+obligated to respect the privacy and security of the reporter of any incident.
 
 ## Attribution
 

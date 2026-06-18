@@ -13,8 +13,8 @@ This is a small utility; security fixes are made on the latest release / `main`.
 
 Please **do not open a public issue** for security problems.
 
-- Use GitHub's [private vulnerability reporting](https://github.com/mmoollee101-lab/HTMLtoPPTX/security/advisories/new), or
-- email **256771501+mmoollee101-lab@users.noreply.github.com** with details and steps to reproduce.
+Use GitHub's [private vulnerability reporting](https://github.com/mmoollee101-lab/HTMLtoPPTX/security/advisories/new)
+to report privately (include details and steps to reproduce).
 
 You'll get an acknowledgement as soon as possible, and we'll work with you on a fix and
 disclosure timeline.
