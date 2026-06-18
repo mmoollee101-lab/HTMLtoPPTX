@@ -5,9 +5,20 @@ samples/_check/
 *.log
 .DS_Store
 
+# electron-builder output + staged Chromium (build inputs/outputs)
+dist/
+build/chromium/
+
 # comparison generated images (keep scripts only)
 compare/html/
 compare/ppt/
+compare/ppt-real/
 compare/pptx/
 compare/cmp/
+compare/cmp-real/
 compare/*.pdf
+
+# bkit / PDCA local tooling state (contains absolute local paths — not for the public repo)
+docs/.bkit-memory.json
+docs/.pdca-status.json
+docs/archive/
