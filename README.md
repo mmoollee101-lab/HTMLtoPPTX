@@ -48,7 +48,7 @@ with fonts embedded and on‑screen line breaks preserved.
 - 🌏 **CJK‑ready** — Korean/Japanese/Chinese decks keep their fonts (incl. bold) and exact
   line breaks; Unicode filenames are preserved on save.
 - 🔒 **100% local & offline** — your files never leave your machine. Fonts are self‑hosted.
-- 🖥️ **Three ways to run** — a CLI, a local web app, and a portable desktop app.
+- 🖥️ **Three ways to run** — a CLI, a local web app, and an installable desktop app.
 
 ## Screens
 
@@ -67,25 +67,26 @@ npm install
 npm run sample        # converts samples/sample.html → samples/sample.pptx
 ```
 
-### Desktop app (portable, no install)
+### Desktop app (installer)
 
-Grab **`HTML-to-PPTX-<version>-portable.exe`** from the
-[Releases](https://github.com/mmoollee101-lab/HTMLtoPPTX/releases) page and double‑click it.
-No Node, no browser, no setup — Chromium is bundled. On first launch it self‑extracts to a temp
-folder (a few seconds), then opens a single frameless window with standard minimize / close
-controls. Converted files land in your **Downloads** folder.
+Grab **`HTML-to-PPTX-<version>-setup.exe`** from the
+[Releases](https://github.com/mmoollee101-lab/HTMLtoPPTX/releases) page and run it.
+No Node, no browser — Chromium is bundled. It installs **per‑user (no admin)**, adds Start‑menu
+and Desktop shortcuts, and unpacks **once** at install so every launch is near‑instant. The app
+is a single frameless window with standard minimize / close controls; converted files land in
+your **Downloads** folder. Uninstall any time from *Apps & features*.
 
-> The binary is **unsigned**, so Windows SmartScreen / antivirus may warn on first run
+> The installer is **unsigned**, so Windows SmartScreen / antivirus may warn once
 > ("Windows protected your PC" → *More info* → *Run anyway*). Code signing is on the roadmap.
 
 **Build it yourself** (from a clone):
 
 ```bash
 npm run app           # dev: run the Electron app from source
-npm run dist          # build dist/HTML-to-PPTX-<version>-portable.exe (Windows)
+npm run dist          # build dist/HTML-to-PPTX-<version>-setup.exe (Windows installer)
 ```
 
-`npm run dist` stages the bundled Chromium (`predist`) and packages a portable `.exe` via
+`npm run dist` stages the bundled Chromium (`predist`) and packages a Windows installer via
 electron‑builder. (The older Puppeteer `--app` launcher is still available as `npm run app:server`.)
 
 ### Web app (any browser)
@@ -189,8 +190,8 @@ force it with `--print` or pass the right `--selector`.
 Yes — CJK fonts (including bold) are embedded and line breaks are locked. Use
 `word-break: keep-all` and leave a little slack in text boxes. Unicode filenames are kept.
 
-**Windows warns the portable `.exe` is unsafe.**
-The binary is unsigned, so SmartScreen shows a warning. Verify you got it from the official
+**Windows warns the installer `.exe` is unsafe.**
+The installer is unsigned, so SmartScreen shows a warning. Verify you got it from the official
 [Releases](https://github.com/mmoollee101-lab/HTMLtoPPTX/releases) page, then *More info → Run
 anyway*. Code signing is on the roadmap.
 
