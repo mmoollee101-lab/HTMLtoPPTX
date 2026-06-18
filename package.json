@@ -1,6 +1,6 @@
 {
   "name": "html-to-pptx",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert finished HTML decks into editable native PowerPoint (.pptx) files via dom-to-pptx + headless Chromium.",
   "type": "commonjs",
   "main": "electron/main.js",

@@ -4,6 +4,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-06-18
+
+Reliability & diagnostics for the portable desktop app.
+
+### Fixed
+- **Conversion errors are now readable.** The Electron layer rejected IPC calls with a
+  plain object, which the renderer could only show as `Error invoking remote method
+  'h2p:convert': [object Object]` — hiding the real cause. Errors are now carried as a
+  tagged result and re-thrown in the renderer with the original message, `code` and slide
+  `candidates` intact (`electron/main.js`, `electron/preload.js`).
+
+### Changed
+- **More robust first run.** Headless Chromium now launches with a longer startup timeout
+  (antivirus often scans the freshly-unpacked ~240 MB Chromium on first run, which could
+  exceed Puppeteer's default 30s and surface as a failed conversion). On a genuine launch
+  failure the engine throws a clear, actionable message instead of a cryptic timeout
+  (`src/convert.js`).
+
+### Added
+- **Headless self-test** for support/diagnostics: set `H2P_SELFTEST=<file.html>` to run a
+  real detect+convert in the packaged runtime and print the result (or the real error),
+  then exit — no window. Inert for normal users (`electron/main.js`).
+
+[1.0.1]: https://github.com/mmoollee101-lab/HTMLtoPPTX/releases/tag/v1.0.1
+
 ## [1.0.0] — 2026-06-18
 
 First public release.
