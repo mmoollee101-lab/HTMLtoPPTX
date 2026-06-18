@@ -24,12 +24,14 @@ const { start } = require('./server');
 
 (async () => {
   const { server, port } = await start(0); // 0 = pick a free port
-  const url = `http://localhost:${port}`;
+  // ?app=1 tells the page to render edge-to-edge (the OS draws the window frame),
+  // so we don't get a faux title bar / desktop backdrop inside a real window.
+  const url = `http://localhost:${port}/?app=1`;
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'h2p-app-'));
 
   console.log('  HTML → editable PPTX  (standalone)');
   console.log(`  server: ${url}`);
-  console.log('  창을 닫으면 종료됩니다.\n');
+  console.log('  Close the window to quit.\n');
 
   const browser = await puppeteer.launch({
     headless: false,
@@ -38,7 +40,8 @@ const { start } = require('./server');
     ignoreDefaultArgs: ['--enable-automation'], // hide the automation banner
     args: [
       `--app=${url}`,
-      '--window-size=820,940',
+      // Snug fit for the edge-to-edge 720px layout (brand 262 + work panes).
+      '--window-size=744,556',
       '--no-first-run',
       '--no-default-browser-check',
     ],

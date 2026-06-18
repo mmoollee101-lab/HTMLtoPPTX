@@ -229,18 +229,28 @@ function enhanceFidelityInPage(slideSelector) {
         const round = (parseFloat(cs.borderRadius) || 0) > 0 || cs.borderRadius.includes('%');
         const glyph = hasBg ? (round ? '●' : '■') : round ? '○' : '□';
         const fill = hasBg ? bg : cs.borderTopColor;
-        if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+        const fontPx = Math.max(w, h) / 0.78; // ~0.78em visual ≈ the marker box
+
+        // Render the marker as its OWN absolutely-positioned text box anchored to
+        // the slide (not inside the host element). dom-to-pptx exports a standalone
+        // positioned text box reliably (like a page number); a glyph inserted inside
+        // the list item instead gets flattened into the item's text run and glued to
+        // it. Anchoring to the slide keeps the marker's size/color/position and
+        // leaves the item's own indent gap intact.
+        const elRect = el.getBoundingClientRect();
+        const slideRect = slide.getBoundingClientRect();
+        const mLeft = elRect.left + (parseFloat(cs.left) || 0) - slideRect.left;
+        const mTop = elRect.top + (parseFloat(cs.top) || 0) - slideRect.top;
+        if (getComputedStyle(slide).position === 'static') slide.style.position = 'relative';
         const dot = document.createElement('span');
         dot.textContent = glyph;
-        // size the glyph (~0.78em visual) to roughly match the marker box
-        const fontPx = Math.max(w, h) / 0.78;
         dot.style.cssText =
           `position:absolute;pointer-events:none;white-space:nowrap;` +
-          `left:${cs.left};top:${cs.top};` +
-          `width:${cs.width};height:${cs.height};` +
-          `font-size:${fontPx}px;line-height:${h}px;color:${fill};` +
+          `left:${mLeft}px;top:${mTop}px;width:${w}px;height:${h}px;` +
+          `display:flex;align-items:center;justify-content:center;` +
+          `font-size:${fontPx}px;line-height:1;color:${fill};` +
           (cs.transform !== 'none' ? `transform:${cs.transform};` : '');
-        el.insertBefore(dot, el.firstChild);
+        slide.appendChild(dot);
         markers++;
       }
     }
@@ -457,6 +467,9 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     opts.browser ||
     (await puppeteer.launch({
       headless: 'new',
+      // In the packaged Electron app, point puppeteer at the bundled Chromium
+      // (opts.executablePath). Omitted by the CLI/web → puppeteer's own default.
+      executablePath: opts.executablePath || undefined,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     }));
 
@@ -554,6 +567,12 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     const slideH = +(slideW / aspect).toFixed(4);
     log(`  → slide ${slideW}in × ${slideH}in (${aspect.toFixed(3)}:1${Math.abs(aspect - 16 / 9) < 0.02 ? ' ≈ 16:9' : ''})`);
 
+    // Surface the resolved counts/dimensions to callers (e.g. the desktop UI)
+    // without changing the Buffer return value.
+    if (typeof opts.onMeta === 'function') {
+      opts.onMeta({ slideCount: count, selector: slideSelector, aspect, slideW, slideH });
+    }
+
     // Resolve web fonts to embeddable (woff/ttf/otf) URLs so PowerPoint renders
     // the real font instead of a wider fallback that shifts the layout.
     let fonts = [];
@@ -613,4 +632,92 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
   }
 }
 
-module.exports = { convertHtmlToPptx, resolveBundlePath };
+/**
+ * Lightweight pre-flight: load the HTML and report how many slides will be
+ * captured (and the source aspect ratio), without running the full conversion.
+ * Used by the desktop UI to show "N slides detected" and to validate the
+ * selector before the user commits to a convert. Mirrors the selector/deck-stage
+ * resolution in convertHtmlToPptx but skips font embedding and the heavy bundle.
+ *
+ * @returns {Promise<{slideCount:number, selector:string, aspect:number, slideW:number, slideH:number}>}
+ * @throws  Error with .code='NO_SLIDES' (and candidate id/class hints) if none match.
+ */
+async function detectSlides(htmlPath, opts = {}) {
+  let slideSelector = opts.slideSelector || '.slide';
+  const userPickedSelector = !!opts.slideSelector;
+  const absHtml = path.resolve(htmlPath);
+  if (!fs.existsSync(absHtml)) throw new Error(`Input HTML not found: ${absHtml}`);
+  const fileUrl = 'file://' + absHtml.replace(/\\/g, '/');
+
+  const ownBrowser = !opts.browser;
+  const browser =
+    opts.browser ||
+    (await puppeteer.launch({
+      headless: 'new',
+      // In the packaged Electron app, point puppeteer at the bundled Chromium
+      // (opts.executablePath). Omitted by the CLI/web → puppeteer's own default.
+      executablePath: opts.executablePath || undefined,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    }));
+
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
+    await page.goto(fileUrl, { waitUntil: 'networkidle0', timeout: 60000 });
+    await page.evaluate(() => document.fonts && document.fonts.ready);
+
+    const isDeckStage = await page.evaluate(() => {
+      const decks = document.querySelectorAll('deck-stage');
+      decks.forEach((d) => d.setAttribute('noscale', ''));
+      return decks.length > 0;
+    });
+    const usePrint = opts.printMedia !== undefined ? opts.printMedia : isDeckStage;
+    if (usePrint) {
+      await page.emulateMediaType('print');
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    if (isDeckStage && !userPickedSelector) slideSelector = 'deck-stage > section';
+
+    const count = await page.$$eval(slideSelector, (els) => els.length);
+    if (count === 0) {
+      const hint = await page.evaluate(() => {
+        const ids = new Set();
+        const classes = new Set();
+        document.querySelectorAll('section,div,article').forEach((el) => {
+          if (el.id) ids.add('#' + el.id);
+          el.classList.forEach((c) => classes.add('.' + c));
+        });
+        return {
+          ids: Array.from(ids).slice(0, 15),
+          classes: Array.from(classes).slice(0, 25),
+        };
+      });
+      const e = new Error(
+        `No slides matched selector "${slideSelector}" in ${path.basename(absHtml)}.`
+      );
+      e.code = 'NO_SLIDES';
+      e.selector = slideSelector;
+      e.candidates = hint;
+      throw e;
+    }
+
+    let aspect;
+    if (opts.aspect && /^\s*\d+(\.\d+)?\s*[:x/]\s*\d+(\.\d+)?\s*$/.test(opts.aspect)) {
+      const [aw, ah] = opts.aspect.split(/[:x/]/).map(Number);
+      aspect = aw / ah;
+    } else {
+      aspect = await page.$eval(slideSelector, (el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 ? r.width / r.height : 16 / 9;
+      });
+    }
+    const slideW = 10;
+    const slideH = +(slideW / aspect).toFixed(4);
+    return { slideCount: count, selector: slideSelector, aspect, slideW, slideH };
+  } finally {
+    await page.close().catch(() => {});
+    if (ownBrowser) await browser.close().catch(() => {});
+  }
+}
+
+module.exports = { convertHtmlToPptx, detectSlides, resolveBundlePath };

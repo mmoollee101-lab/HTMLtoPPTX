@@ -1,9 +1,9 @@
 @echo off
-title HTML to PPTX - DEV
+title HTML to PPTX
 cd /d "%~dp0"
 
 echo ============================================
-echo    HTML to editable PPTX  (DEV app)
+echo    HTML to editable PPTX
 echo ============================================
 echo.
 

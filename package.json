@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "Convert finished HTML decks into editable native PowerPoint (.pptx) files via dom-to-pptx + headless Chromium.",
   "type": "commonjs",
+  "main": "electron/main.js",
   "bin": {
     "html2pptx": "src/cli.js"
   },
   "scripts": {
     "start": "node src/cli.js",
-    "app": "node src/app.js",
+    "app": "electron .",
+    "app:server": "node src/app.js",
     "web": "node src/server.js",
-    "sample": "node src/cli.js samples/sample.html"
+    "sample": "node src/cli.js samples/sample.html",
+    "predist": "node scripts/resolve-chromium.js",
+    "dist": "electron-builder --win portable"
   },
   "keywords": [
     "html",
@@ -18,14 +22,69 @@
     "powerpoint",
     "puppeteer",
     "dom-to-pptx",
-    "editable"
+    "editable",
+    "converter",
+    "slides",
+    "offline"
   ],
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmoollee101-lab/HTMLtoPPTX.git"
+  },
+  "homepage": "https://github.com/mmoollee101-lab/HTMLtoPPTX#readme",
+  "bugs": {
+    "url": "https://github.com/mmoollee101-lab/HTMLtoPPTX/issues"
+  },
+  "files": [
+    "electron/",
+    "src/",
+    "public/",
+    "samples/sample.html"
+  ],
+  "build": {
+    "appId": "com.htmltopptx.app",
+    "productName": "HTML to PPTX",
+    "files": [
+      "electron/**",
+      "src/**",
+      "public/**",
+      "node_modules/**",
+      "!**/*.pptx",
+      "!**/*.map",
+      "!docs/**",
+      "!compare/**",
+      "!samples/**"
+    ],
+    "extraResources": [
+      { "from": "build/chromium", "to": "chromium" }
+    ],
+    "asarUnpack": [
+      "node_modules/puppeteer/**",
+      "node_modules/puppeteer-core/**",
+      "node_modules/dom-to-pptx/**",
+      "node_modules/fonteditor-core/**"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "public/icons/app.ico"
+    },
+    "portable": {
+      "artifactName": "HTML-to-PPTX-${version}-portable.exe"
+    }
+  },
   "dependencies": {
     "dom-to-pptx": "1.1.10",
     "fonteditor-core": "^2.6.3",
     "jszip": "^3.10.1",
     "pako": "^2.1.0",
     "puppeteer": "^23.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
   }
 }

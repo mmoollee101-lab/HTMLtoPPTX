@@ -1,142 +1,604 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>HTML → 편집가능 PPTX 변환기</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'" />
+<title>HTML to PPTX</title>
+<script>/* Render mode: web (floating card) | legacy ?app=1 (edge-to-edge) | Electron ?shell=electron (full card = the window). */
+(function () {
+  var q = new URLSearchParams(location.search);
+  var shell = q.get('shell');
+  // legacy src/app.js window used ?app=1 → edge-to-edge (hides the faux title bar)
+  if (shell === 'app' || q.has('app')) document.documentElement.classList.add('shell-app');
+  // Electron (?shell=electron): card fills the window AND keeps the title bar (drag + controls).
+  else if (shell === 'electron') document.documentElement.classList.add('shell-frame');
+})();
+</script>
+<link rel="icon" type="image/png" sizes="256x256" href="icons/icon-256.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
 <style>
-  :root { --blue:#2563eb; --ink:#1f2937; --line:#e5e7eb; }
+  /* Self-hosted variable fonts (latin) — keeps the app fully offline.
+     Source: Google Fonts — Hanken Grotesk & JetBrains Mono, OFL-1.1. */
+  @font-face {
+    font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 400 700;
+    font-display: swap; src: url('fonts/HankenGrotesk.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 500;
+    font-display: swap; src: url('fonts/JetBrainsMono.woff2') format('woff2');
+  }
+
+  :root {
+    --primary: #6366f1; --primary-hover: #4f46e5; --primary-2: #8b5cf6;
+    --tint: #eef2ff; --tint-2: #f5f6ff; --disabled: #a5b4fc;
+    --ink: #0f172a; --ink-2: #1e293b; --body: #475569; --muted: #64748b;
+    --faint: #94a3b8; --faint-2: #a3abc2; --line: #e2e8f0;
+    --success: #16a34a; --success-2: #15803d; --success-bg: #f0fdf4;
+    --error: #dc2626; --error-2: #b91c1c; --error-bg: #fef2f2;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    margin: 0; font-family: 'Segoe UI', 'Noto Sans KR', system-ui, sans-serif;
-    background: #f3f4f6; color: var(--ink); display: flex; min-height: 100vh;
-    align-items: center; justify-content: center; padding: 24px;
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #e7e9ef; padding: 32px;
+    font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    user-select: none;
   }
-  .card {
-    background: #fff; width: 100%; max-width: 560px; border-radius: 18px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.10); padding: 36px;
+
+  /* ── window shell ── */
+  .window {
+    width: 720px; border-radius: 14px; overflow: hidden; background: #fff;
+    box-shadow: 0 24px 60px -18px rgba(15,23,42,.34), 0 0 0 1px rgba(15,23,42,.06);
   }
-  h1 { font-size: 24px; margin: 0 0 6px; }
-  p.sub { margin: 0 0 26px; color: #6b7280; font-size: 14px; line-height: 1.6; }
-  label { display: block; font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
-  .drop {
-    border: 2px dashed #c7d2fe; border-radius: 14px; padding: 30px; text-align: center;
-    cursor: pointer; transition: .15s; background: #f8faff;
+  .titlebar {
+    height: 42px; display: flex; align-items: center; padding: 0 0 0 15px;
+    background: #fbfbfd; border-bottom: 1px solid #eef1f5; -webkit-app-region: drag;
   }
-  .drop.hover { border-color: var(--blue); background: #eef2ff; }
-  .drop strong { color: var(--blue); }
-  .drop small { display:block; color:#9ca3af; margin-top:8px; }
-  input[type=text] {
-    width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px;
-    font-size: 14px;
+  .title {
+    flex: 1; font-size: 12.5px; font-weight: 600; color: var(--faint); letter-spacing: -.01em;
   }
-  button {
-    margin-top: 24px; width: 100%; padding: 14px; border: 0; border-radius: 12px;
-    background: var(--blue); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+  /* Windows-style window controls (right-aligned minimize / close). Shown only in
+     the Electron app; hidden in the browser (where there's no window to control). */
+  .win-controls { display: none; height: 100%; -webkit-app-region: no-drag; }
+  html.has-window-controls .win-controls { display: flex; }
+  .win-btn {
+    width: 46px; height: 100%; border: none; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: #5b6478;
+    transition: background .12s, color .12s; padding: 0;
   }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .status { margin-top: 18px; font-size: 14px; text-align: center; min-height: 20px; }
-  .status.err { color: #dc2626; white-space: pre-wrap; text-align:left; }
-  .status.ok { color: #16a34a; }
-  .file-name { margin-top: 10px; font-size: 13px; color: var(--blue); font-weight: 600; }
-  .tips { margin-top: 26px; font-size: 12px; color: #9ca3af; line-height: 1.7;
-    border-top: 1px solid var(--line); padding-top: 16px; }
-  .spinner { display:inline-block; width:15px; height:15px; border:2px solid #c7d2fe;
-    border-top-color: var(--blue); border-radius:50%; animation: spin .7s linear infinite;
-    vertical-align:-2px; margin-right:8px; }
+  .win-btn:hover { background: #e7e9ef; }
+  .win-btn.win-close:hover { background: #e81123; color: #fff; }
+  .body { display: flex; }
+
+  /* App-shell mode (standalone window): the OS already draws a frame, so drop the
+     desktop backdrop + faux title bar and let the page fill the window edge-to-edge.
+     The full floating-card look is kept for the browser (web) mode. */
+  html.shell-app, html.shell-app body { height: 100%; }
+  html.shell-app body { padding: 0; background: #fff; display: block; }
+  html.shell-app .window { width: 100%; min-height: 100vh; border-radius: 0; box-shadow: none; }
+  html.shell-app .titlebar { display: none; }
+  html.shell-app .body { min-height: 100vh; }
+
+  /* Electron frameless window: the card fills the window, title bar stays as the
+     drag region + window controls. (Like shell-app but the title bar is visible.) */
+  html.shell-frame, html.shell-frame body { height: 100%; }
+  html.shell-frame body { padding: 0; background: #fff; display: block; }
+  html.shell-frame .window {
+    width: 100%; min-height: 100vh; border-radius: 0; box-shadow: none;
+    display: flex; flex-direction: column;
+  }
+  html.shell-frame .body { flex: 1; }
+
+  /* ── left · brand ── */
+  .brand {
+    width: 262px; flex-shrink: 0; padding: 26px 26px 24px;
+    background: linear-gradient(168deg, #f6f7fe, #edf0fc 65%, #e9ecfb);
+    border-right: 1px solid #eceefb; display: flex; flex-direction: column;
+  }
+  .logo-row { display: flex; align-items: center; gap: 9px; }
+  .logo {
+    width: 27px; height: 27px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 6px 14px -4px rgba(99,102,241,.5);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wordmark { font-size: 14.5px; font-weight: 700; color: var(--ink-2); letter-spacing: -.02em; }
+  .headline { font-size: 21px; font-weight: 700; color: var(--ink); letter-spacing: -.025em; line-height: 1.2; margin: 26px 0 0; }
+  .subcopy { font-size: 12.5px; color: #6b7280; line-height: 1.55; margin: 11px 0 0; }
+  .checklist { display: flex; flex-direction: column; gap: 13px; margin-top: 26px; }
+  .check { display: flex; gap: 10px; align-items: flex-start; }
+  .check-box {
+    width: 20px; height: 20px; border-radius: 6px; background: #fff; border: 1px solid #e3e6f5;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .check span { font-size: 12px; color: var(--body); line-height: 1.4; font-weight: 500; }
+  .brand-footer { margin-top: auto; padding-top: 22px; font-family: var(--mono); font-size: 10px; color: var(--faint-2); letter-spacing: .05em; }
+
+  /* ── right · work ── */
+  .work { flex: 1; padding: 28px 30px; min-height: 380px; display: flex; flex-direction: column; justify-content: center; }
+  .state { display: none; }
+  .state.active { display: block; }
+
+  .eyebrow { font-family: var(--mono); font-size: 11px; color: var(--primary); font-weight: 500; letter-spacing: .06em; }
+  .state-title { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; margin: 5px 0 18px; }
+
+  .dropzone {
+    cursor: pointer; border: 1.5px dashed #cdd4e2; border-radius: 13px; padding: 28px 18px;
+    text-align: center; background: #fafbff; transition: all .15s;
+  }
+  .dropzone:hover, .dropzone.hover { border-color: var(--primary); background: var(--tint-2); }
+  .drop-tile {
+    width: 46px; height: 46px; border-radius: 12px; background: var(--tint);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;
+  }
+  .drop-label { font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+  .drop-label .accent { color: var(--primary); }
+  .drop-hint { font-size: 11px; color: var(--faint); margin-top: 6px; font-family: var(--mono); }
+
+  .field { margin-top: 16px; }
+  .field-label { font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+  .field-label .note { font-size: 11px; color: var(--faint); font-weight: 400; }
+  .selector-input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 12px; font-family: var(--mono); color: #334155; background: #fff; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .selector-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--tint); }
+
+  .btn { font-family: inherit; border: none; cursor: pointer; }
+  .btn-primary {
+    width: 100%; padding: 12px; border-radius: 11px; background: var(--primary); color: #fff;
+    font-size: 13.5px; font-weight: 600; box-shadow: 0 10px 22px -8px rgba(99,102,241,.6);
+    transition: background .15s; margin-top: 13px;
+  }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-disabled {
+    width: 100%; padding: 12px; border-radius: 11px; background: var(--tint); color: var(--disabled);
+    font-size: 13.5px; font-weight: 600; cursor: not-allowed; margin-top: 13px;
+  }
+
+  /* file card */
+  .file-card {
+    display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 13px;
+    padding: 13px 15px; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.04);
+  }
+  .file-tile {
+    width: 40px; height: 40px; border-radius: 11px; background: var(--tint);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 13px; font-weight: 600; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-size: 11px; color: var(--faint); margin-top: 2px; }
+  .file-meta .detected { color: var(--success); font-weight: 600; }
+  .remove {
+    width: 26px; height: 26px; border-radius: 7px; border: none; background: #f1f5f9; color: var(--faint);
+    cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all .15s;
+  }
+  .remove:hover { background: #fee2e2; color: var(--error); }
+
+  /* converting */
+  .center { text-align: center; }
+  .spinner { width: 52px; height: 52px; margin: 0 auto 18px; }
+  .spinner svg { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .conv-label { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
+  .conv-sub { font-size: 11.5px; color: var(--faint); margin-top: 5px; margin-bottom: 20px; }
+  .progress-track { height: 8px; border-radius: 99px; background: #eef1f5; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); border-radius: 99px; width: 0%; transition: width .15s ease; }
+  .progress-row { display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; color: var(--faint); font-family: var(--mono); }
+  .progress-pct { color: var(--primary); font-weight: 500; }
+  .cancel { cursor: pointer; transition: color .15s; }
+  .cancel:hover { color: var(--error); }
+
+  /* complete / error */
+  .status-circle { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; }
+  .complete-title { font-size: 16.5px; font-weight: 700; color: var(--success-2); letter-spacing: -.015em; word-break: break-word; }
+  .complete-meta { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
+  .error-title { font-size: 15.5px; font-weight: 700; color: var(--error-2); letter-spacing: -.015em; }
+  .error-sub { font-size: 11.5px; color: var(--faint); margin-top: 6px; line-height: 1.5; }
+  .error-sub code { font-family: var(--mono); color: var(--muted); }
+  .action-row { display: flex; gap: 9px; justify-content: center; margin-top: 20px; }
+  .btn-fill { padding: 10px 22px; border-radius: 11px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 10px 22px -8px rgba(99,102,241,.6); transition: background .15s; }
+  .btn-fill:hover { background: var(--primary-hover); }
+  .btn-outline { padding: 10px 20px; border-radius: 11px; border: 1px solid var(--line); background: #fff; color: var(--body); font-size: 13px; font-weight: 600; transition: background .15s; }
+  .btn-outline:hover { background: #f8fafc; }
+  .text-link { margin-top: 16px; font-size: 12.5px; color: var(--primary); cursor: pointer; font-weight: 600; }
+  .candidates { margin-top: 12px; font-family: var(--mono); font-size: 10.5px; color: var(--faint); line-height: 1.6; word-break: break-all; max-height: 70px; overflow: auto; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>HTML → 편집가능 PPTX</h1>
-    <p class="sub">완성된 HTML 발표자료를 클릭하면 글자가 수정되는 네이티브 PowerPoint로 변환합니다.</p>
-
-    <div class="drop" id="drop">
-      <strong>HTML 파일 선택</strong> 또는 여기로 끌어다 놓기
-      <small>self-contained HTML 권장 (이미지·폰트는 절대 URL/데이터 URI)</small>
-      <div class="file-name" id="fileName"></div>
+  <div class="window">
+    <div class="titlebar">
+      <span class="title">HTML to PPTX</span>
+      <div class="win-controls">
+        <button class="win-btn" id="winMin" title="Minimize" aria-label="Minimize">
+          <svg width="11" height="11" viewBox="0 0 11 11"><line x1="1" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1"/></svg>
+        </button>
+        <button class="win-btn win-close" id="winClose" title="Close" aria-label="Close">
+          <svg width="11" height="11" viewBox="0 0 11 11"><line x1="1.5" y1="1.5" x2="9.5" y2="9.5" stroke="currentColor" stroke-width="1.1"/><line x1="9.5" y1="1.5" x2="1.5" y2="9.5" stroke="currentColor" stroke-width="1.1"/></svg>
+        </button>
+      </div>
     </div>
-    <input type="file" id="file" accept=".html,.htm" hidden />
 
-    <label for="selector">슬라이드 셀렉터 <span style="color:#9ca3af;font-weight:400">(비우면 자동 감지)</span></label>
-    <input type="text" id="selector" value="" placeholder="자동 (.slide / deck-stage 등 자동 인식)" />
+    <div class="body">
+      <!-- LEFT · brand -->
+      <div class="brand">
+        <div class="logo-row">
+          <div class="logo">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 18l6-5 4 3 4-4 4 3"/></svg>
+          </div>
+          <span class="wordmark">HTML to PPTX</span>
+        </div>
+        <h1 class="headline">HTML in.<br>Editable slides out.</h1>
+        <p class="subcopy">No screenshots. Real PowerPoint text, shapes and layout you can keep editing.</p>
+        <div class="checklist">
+          <div class="check"><div class="check-box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div><span>Native, fully editable text boxes</span></div>
+          <div class="check"><div class="check-box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div><span>Fonts, colors &amp; layout preserved</span></div>
+          <div class="check"><div class="check-box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div><span>Runs locally — files never leave your machine</span></div>
+        </div>
+        <div class="brand-footer">OPEN SOURCE · OFFLINE · v1.0</div>
+      </div>
 
-    <button id="go" disabled>PPTX로 변환 · 다운로드</button>
-    <div class="status" id="status"></div>
+      <!-- RIGHT · work -->
+      <div class="work">
 
-    <div class="tips">
-      팁 · 고정 px(예: 1920×1080)로 만든 16:9 슬라이드를 권장합니다.<br />
-      Google Fonts 임베드는 &lt;link&gt;에 <code>crossorigin="anonymous"</code> 필요.<br />
-      한글은 <code>word-break: keep-all</code> + 텍스트박스 여유 공간 권장.
+        <!-- empty -->
+        <div class="state" data-state="empty">
+          <div class="eyebrow">CONVERT</div>
+          <div class="state-title">Convert a presentation</div>
+          <div class="dropzone" id="dropzone">
+            <div class="drop-tile">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></svg>
+            </div>
+            <div class="drop-label">Choose an HTML file <span class="accent">or drag it here</span></div>
+            <div class="drop-hint">self-contained .html recommended</div>
+          </div>
+          <div class="field">
+            <div class="field-label">Slide selector <span class="note">· auto-detect if empty</span></div>
+            <input class="selector-input js-selector" placeholder="Auto · .slide, [data-label], deck-stage…" />
+          </div>
+          <button class="btn btn-disabled" disabled>Convert to PPTX</button>
+        </div>
+
+        <!-- file -->
+        <div class="state" data-state="file">
+          <div class="eyebrow">READY</div>
+          <div class="state-title">Convert a presentation</div>
+          <div class="file-card">
+            <div class="file-tile">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5h7l5 5V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M13 3.5V8.5h5"/></svg>
+            </div>
+            <div class="file-info">
+              <div class="file-name" id="fileName">—</div>
+              <div class="file-meta" id="fileMeta">—</div>
+            </div>
+            <button class="remove" id="removeBtn" title="Remove">×</button>
+          </div>
+          <div class="field">
+            <div class="field-label">Slide selector <span class="note">· auto-detect if empty</span></div>
+            <input class="selector-input js-selector" placeholder="Auto · .slide, [data-label], deck-stage…" />
+          </div>
+          <button class="btn btn-primary" id="convertBtn">Convert to PPTX →</button>
+        </div>
+
+        <!-- converting -->
+        <div class="state" data-state="converting">
+          <div class="center">
+            <div class="spinner">
+              <svg width="52" height="52" viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="#eef1f5" stroke-width="6"/><circle cx="32" cy="32" r="27" fill="none" stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-dasharray="60 200"/></svg>
+            </div>
+            <div class="conv-label" id="convLabel">Converting…</div>
+            <div class="conv-sub">Generating editable text boxes…</div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="progress-row">
+              <span class="progress-pct" id="progressPct">0%</span>
+              <span class="cancel" id="cancelBtn">Cancel</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- complete -->
+        <div class="state" data-state="complete">
+          <div class="center">
+            <div class="status-circle" style="background:var(--success-bg)">
+              <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-6"/></svg>
+            </div>
+            <div class="complete-title" id="completeTitle">Ready</div>
+            <div class="complete-meta" id="completeMeta">—</div>
+            <div class="action-row">
+              <button class="btn btn-fill" id="openBtn">Open</button>
+              <button class="btn btn-outline" id="revealBtn">Show in folder</button>
+            </div>
+            <div class="text-link" id="convertAnother">Convert another</div>
+          </div>
+        </div>
+
+        <!-- error -->
+        <div class="state" data-state="error">
+          <div class="center">
+            <div class="status-circle" style="background:var(--error-bg)">
+              <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v6"/><path d="M12 16.4h.01"/></svg>
+            </div>
+            <div class="error-title" id="errorTitle">Conversion failed</div>
+            <div class="error-sub" id="errorSub">Set a selector like <code>.slide</code> or <code>section</code> and try again.</div>
+            <div class="candidates" id="errorCandidates" style="display:none"></div>
+            <div class="action-row">
+              <button class="btn btn-outline" id="editBtn">Edit settings</button>
+              <button class="btn btn-fill" id="retryBtn">Try again</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 
-<script>
-  const fileInput = document.getElementById('file');
-  const drop = document.getElementById('drop');
-  const fileName = document.getElementById('fileName');
-  const go = document.getElementById('go');
-  const statusEl = document.getElementById('status');
-  let htmlText = null, baseName = 'deck';
+  <input type="file" id="fileInput" accept=".html,.htm" hidden />
 
-  function setFile(f) {
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      htmlText = r.result;
-      baseName = f.name.replace(/\.html?$/i, '');
-      fileName.textContent = '📄 ' + f.name;
-      go.disabled = false;
-      statusEl.className = 'status';
-      statusEl.textContent = '';
-    };
-    r.readAsText(f, 'utf-8');
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const states = document.querySelectorAll('.state');
+  const selectorInputs = document.querySelectorAll('.js-selector');
+  const inElectron = !!window.api; // preload bridge present → desktop app
+
+  const app = {
+    view: 'empty',
+    file: null,        // web: { name, size, text, baseName } · electron: { name, size, path, baseName }
+    selector: '',
+    meta: null,        // { slideCount, selector, aspect }
+    result: null,      // { fileName, path, bytes, slideCount }
+    convController: null,
+    progTimer: null,
+    detectToken: 0,
+  };
+
+  function fmtBytes(n) {
+    if (!n && n !== 0) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(1) + ' MB';
   }
 
-  drop.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', (e) => setFile(e.target.files[0]));
-  ['dragover', 'dragenter'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('hover'); })
-  );
-  ['dragleave', 'drop'].forEach((ev) =>
-    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('hover'); })
-  );
-  drop.addEventListener('drop', (e) => setFile(e.dataTransfer.files[0]));
+  function setView(v) {
+    app.view = v;
+    states.forEach((el) => el.classList.toggle('active', el.dataset.state === v));
+  }
 
-  go.addEventListener('click', async () => {
-    if (!htmlText) return;
-    go.disabled = true;
-    statusEl.className = 'status';
-    statusEl.innerHTML = '<span class="spinner"></span>변환 중… (폰트 임베드/렌더링)';
-    try {
-      const res = await fetch('/api/convert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          html: htmlText,
-          selector: document.getElementById('selector').value.trim(),
-          name: baseName,
-        }),
-      });
-      if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(error || '변환 실패');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = baseName + '.pptx'; a.click();
-      URL.revokeObjectURL(url);
-      statusEl.className = 'status ok';
-      statusEl.textContent = '✓ 완료 — ' + baseName + '.pptx 다운로드됨';
-    } catch (err) {
-      statusEl.className = 'status err';
-      statusEl.textContent = '✗ ' + err.message;
-    } finally {
-      go.disabled = false;
-    }
+  // ── transport: IPC in Electron, HTTP in the browser ──
+  // detect/convert payloads carry a file PATH in Electron, HTML TEXT on the web.
+  async function callApi(name, payload) {
+    if (inElectron) return window.api[name](payload); // rejects { message, code, candidates }
+    const res = await fetch('/api/' + name, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload), signal: payload && payload.__signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw { message: data.error || 'Request failed', code: data.code || null, candidates: data.candidates || null };
+    return data;
+  }
+  function reqFor(extra) {
+    return inElectron
+      ? Object.assign({ path: app.file.path }, extra)
+      : Object.assign({ html: app.file.text }, extra);
+  }
+
+  // keep all selector inputs in sync
+  selectorInputs.forEach((inp) => {
+    inp.addEventListener('input', () => {
+      app.selector = inp.value;
+      selectorInputs.forEach((o) => { if (o !== inp) o.value = inp.value; });
+    });
   });
+
+  // ── window controls (Electron only; decorative in the browser) ──
+  if (inElectron) {
+    document.documentElement.classList.add('has-window-controls');
+    const c = $('winClose'), m = $('winMin');
+    if (c) c.addEventListener('click', () => window.api.win.close());
+    if (m) m.addEventListener('click', () => window.api.win.minimize());
+  }
+
+  // ── file selection ──
+  async function pickFile() {
+    if (inElectron) {
+      const f = await window.api.chooseFile(); // native dialog → real path
+      if (f) setFile({ name: f.name, size: f.size, path: f.path });
+    } else {
+      $('fileInput').click();
+    }
+  }
+  $('dropzone').addEventListener('click', pickFile);
+  $('fileInput').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) readWebFile(f); });
+
+  const dz = $('dropzone');
+  ['dragover', 'dragenter'].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('hover'); }));
+  ['dragleave', 'dragend'].forEach((ev) =>
+    dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('hover'); }));
+  dz.addEventListener('drop', (e) => {
+    e.preventDefault(); dz.classList.remove('hover');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    if (inElectron) setFile({ name: f.name, size: f.size, path: window.api.pathForFile(f) });
+    else readWebFile(f);
+  });
+
+  // web: read the file as text (engine receives HTML); electron uses the path directly
+  function readWebFile(f) {
+    if (!/\.html?$/i.test(f.name)) { alert('Please choose an .html file.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setFile({ name: f.name, size: f.size, text: reader.result });
+    reader.readAsText(f, 'utf-8');
+  }
+
+  function setFile(info) {
+    if (!/\.html?$/i.test(info.name)) { alert('Please choose an .html file.'); return; }
+    app.file = {
+      name: info.name, size: info.size,
+      text: info.text || null, path: info.path || null,
+      baseName: info.name.replace(/\.html?$/i, ''),
+    };
+    app.meta = null;
+    $('fileName').textContent = info.name;
+    $('fileMeta').innerHTML = fmtBytes(info.size) + ' · <span style="color:#94a3b8">detecting slides…</span>';
+    setView('file');
+    detect();
+  }
+
+  // ── pre-flight detect (shows "N slides detected") ──
+  async function detect() {
+    const token = ++app.detectToken;
+    try {
+      const data = await callApi('detect', reqFor({ selector: app.selector.trim() }));
+      if (token !== app.detectToken) return; // superseded
+      app.meta = data;
+      $('fileMeta').innerHTML = fmtBytes(app.file.size) +
+        ' · <span class="detected">' + data.slideCount + ' slide' +
+        (data.slideCount === 1 ? '' : 's') + ' detected</span>';
+    } catch (err) {
+      if (token !== app.detectToken) return;
+      app.meta = null;
+      const noSlides = err && err.code === 'NO_SLIDES';
+      $('fileMeta').innerHTML = noSlides
+        ? fmtBytes(app.file.size) + ' · <span style="color:#dc2626;font-weight:600">no slides detected</span>'
+        : fmtBytes(app.file.size);
+    }
+  }
+
+  $('removeBtn').addEventListener('click', reset);
+  $('convertAnother').addEventListener('click', reset);
+  function reset() {
+    app.detectToken++;
+    stopProgress();
+    if (app.convController) { app.convController.abort(); app.convController = null; }
+    app.file = null; app.meta = null; app.result = null;
+    $('fileInput').value = '';
+    setView('empty');
+  }
+
+  // ── convert ──
+  $('convertBtn').addEventListener('click', startConvert);
+  $('retryBtn').addEventListener('click', startConvert);
+  $('cancelBtn').addEventListener('click', reset);
+
+  function startConvert() {
+    if (!app.file) { setView('empty'); return; }
+    setView('converting');
+    startProgress();
+
+    // Cancel: web aborts the fetch; Electron has no abort, so "Cancel" only resets the
+    // UI and the finished (now-orphan) .pptx is discarded.
+    let aborted = false;
+    const controller = inElectron ? { abort: () => { aborted = true; } } : new AbortController();
+    app.convController = controller;
+
+    const req = reqFor({ selector: app.selector.trim(), name: app.file.baseName });
+    if (!inElectron) req.__signal = controller.signal;
+
+    callApi('convert', req)
+      .then((data) => {
+        if (aborted) { if (inElectron && data && data.path) window.api.discard(data.path); return; }
+        finishProgress(() => { app.result = data; showComplete(data); });
+      })
+      .catch((err) => {
+        if (aborted || (err && err.name === 'AbortError')) return;
+        stopProgress();
+        showError(err);
+      });
+  }
+
+  function showComplete(data) {
+    $('completeTitle').textContent = data.fileName + ' is ready';
+    const parts = [];
+    if (data.slideCount) parts.push(data.slideCount + ' slide' + (data.slideCount === 1 ? '' : 's'));
+    parts.push(fmtBytes(data.bytes));
+    parts.push('editable text & shapes');
+    $('completeMeta').textContent = parts.join(' · ');
+    setView('complete');
+  }
+
+  function showError(err) {
+    err = err || {};
+    const noSlides = err.code === 'NO_SLIDES';
+    $('errorTitle').textContent = noSlides ? 'No slides detected' : 'Conversion failed';
+    if (noSlides) {
+      $('errorSub').innerHTML = 'Set a selector like <code>.slide</code> or <code>section</code> and try again.';
+    } else {
+      $('errorSub').textContent = err.message || 'Something went wrong.';
+    }
+    const cand = err.candidates;
+    const box = $('errorCandidates');
+    if (cand && (cand.ids?.length || cand.classes?.length)) {
+      box.style.display = '';
+      box.innerHTML =
+        (cand.ids?.length ? 'ids: ' + cand.ids.join('  ') + '<br>' : '') +
+        (cand.classes?.length ? 'classes: ' + cand.classes.join('  ') : '');
+    } else {
+      box.style.display = 'none';
+    }
+    setView('error');
+  }
+
+  $('editBtn').addEventListener('click', () => {
+    setView(app.file ? 'file' : 'empty');
+    const inp = document.querySelector('.state.active .js-selector');
+    if (inp) inp.focus();
+  });
+
+  // ── OS actions (Open / Show in folder) ──
+  $('openBtn').addEventListener('click', () => osAction('open'));
+  $('revealBtn').addEventListener('click', () => osAction('reveal'));
+  function osAction(kind) {
+    if (!app.result) return;
+    if (inElectron) window.api[kind](app.result.path);
+    else fetch('/api/' + kind, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: app.result.path }),
+    }).catch(() => {});
+  }
+
+  // ── simulated progress (the engine runs as one opaque step) ──
+  function startProgress() {
+    let p = 6;
+    setProgress(p);
+    stopProgress();
+    app.progTimer = setInterval(() => {
+      // ease toward 92% while we wait for the real response
+      const step = p < 60 ? 2.2 : p < 85 ? 0.8 : 0.25;
+      p = Math.min(92, p + step);
+      setProgress(p);
+    }, 120);
+  }
+  function finishProgress(done) {
+    stopProgress();
+    setProgress(100);
+    setTimeout(done, 320);
+  }
+  function stopProgress() {
+    if (app.progTimer) { clearInterval(app.progTimer); app.progTimer = null; }
+  }
+  function setProgress(p) {
+    const pct = Math.round(p);
+    $('progressFill').style.width = pct + '%';
+    $('progressPct').textContent = pct + '%';
+    const total = (app.meta && app.meta.slideCount) || 0;
+    if (total > 0) {
+      const n = Math.min(total, Math.max(1, Math.round(p / 100 * total)));
+      $('convLabel').textContent = 'Converting slide ' + n + ' of ' + total;
+    } else {
+      $('convLabel').textContent = 'Converting…';
+    }
+  }
+
+  setView('empty');
+})();
 </script>
 </body>
 </html>
