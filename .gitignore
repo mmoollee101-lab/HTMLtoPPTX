@@ -22,3 +22,32 @@ compare/*.pdf
 docs/.bkit-memory.json
 docs/.pdca-status.json
 docs/archive/
+
+# secrets / environment (never commit these)
+.env
+.env.*
+!.env.example
+*.local
+
+# credential & key files
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+id_rsa
+id_ed25519
+secrets.json
+credentials.json
+.npmrc
+.netrc
+
+# puppeteer browser cache (build input; large)
+.puppeteer/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
