@@ -30,8 +30,8 @@ const toDataUri = (p) => 'data:image/png;base64,' + fs.readFileSync(p).toString(
         font-size:22px;font-weight:700;padding:4px 14px;border-radius:6px}
       .tag.b{background:rgba(192,57,43,.85)}
     </style></head><body><div class=wrap>
-      <div class=row><img src="${toDataUri(htmlP)}"><span class=tag>HTML (원본)</span></div>
-      <div class=row><img src="${toDataUri(pptP)}"><span class="tag b">PPT (변환)</span></div>
+      <div class=row><img src="${toDataUri(htmlP)}"><span class=tag>HTML (source)</span></div>
+      <div class=row><img src="${toDataUri(pptP)}"><span class="tag b">PPT (converted)</span></div>
     </div></body></html>`;
     await p.setContent(page, { waitUntil: 'load' });
     const wrap = await p.$('.wrap');

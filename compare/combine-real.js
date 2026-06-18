@@ -4,7 +4,7 @@
 //   node compare/combine-real.js
 //
 // Real screenshots can be any image format; they're matched to HTML slides in
-// numeric filename order (so "슬라이드1.PNG".."슬라이드10.PNG" or "1.jpg".. work).
+// numeric filename order (so "slide1.PNG".."slide10.PNG" or "1.jpg".. work).
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
@@ -27,7 +27,7 @@ const toDataUri = (p) => {
 };
 
 (async () => {
-  if (!real.length) { console.log('compare/ppt-real 에 이미지가 없습니다.'); return; }
+  if (!real.length) { console.log('No images found in compare/ppt-real.'); return; }
   console.log(`real=${real.length}, html=${html.length}`);
   const b = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox'] });
   const p = await b.newPage();
@@ -44,8 +44,8 @@ const toDataUri = (p) => {
         font-size:22px;font-weight:700;padding:4px 14px;border-radius:6px}
       .tag.b{background:rgba(192,57,43,.85)}
     </style></head><body><div class=wrap>
-      <div class=row><img src="${toDataUri(path.join(htmlDir, html[i]))}"><span class=tag>HTML (원본)</span></div>
-      <div class=row><img src="${toDataUri(path.join(realDir, real[i]))}"><span class="tag b">PPT (실제 캡처)</span></div>
+      <div class=row><img src="${toDataUri(path.join(htmlDir, html[i]))}"><span class=tag>HTML (source)</span></div>
+      <div class=row><img src="${toDataUri(path.join(realDir, real[i]))}"><span class="tag b">PPT (real capture)</span></div>
     </div></body></html>`;
     await p.setContent(page, { waitUntil: 'load' });
     await (await p.$('.wrap')).screenshot({ path: path.join(outDir, `cmp_${nn}.png`) });

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Lint & load (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20', '22']
+    # Skip Puppeteer's Chromium download — CI only syntax-checks and loads the
+    # modules; it does not launch a browser. This keeps the job fast and reliable.
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax-check all sources
+        run: |
+          for f in $(git ls-files 'src/*.js' 'electron/*.js' 'scripts/*.js' 'compare/*.js'); do
+            node --check "$f"
+          done
+
+      - name: Load core modules
+        run: node -e "require('./src/util'); require('./src/convert'); require('./src/server'); console.log('modules load OK')"
+
+      - name: Validate JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"

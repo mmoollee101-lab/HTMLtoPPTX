@@ -1,0 +1,49 @@
+name: Bug report
+description: Something isn't converting or behaving as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! Please fill in as much as you can.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+      placeholder: When I convert deck.html, the title text overlaps the subtitle…
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce it? A minimal `.html` deck that triggers the bug is the most helpful thing you can attach.
+      placeholder: |
+        1. Run `node src/cli.js deck.html`
+        2. Open the resulting .pptx in PowerPoint
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How are you running it?
+      options:
+        - CLI (node src/cli.js)
+        - Web app (npm run web)
+        - Desktop app (portable .exe)
+        - Desktop app (npm run app)
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / version
+      placeholder: Windows 11 23H2 · Node 20.11
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output / logs
+      description: Paste any error output (from the terminal or the app console). This is automatically formatted as code.
+      render: shell

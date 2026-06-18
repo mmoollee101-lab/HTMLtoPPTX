@@ -1,25 +1,28 @@
-# compare — HTML vs PPTX 슬라이드별 비교 이미지
+# compare — side-by-side HTML vs PPTX, slide by slide
 
-변환 결과(PPTX)가 원본 HTML과 얼마나 같은지 **슬라이드별로 나란히** 보기 위한 도구.
+A small dev tool to check how closely the converted PPTX matches the source HTML, by
+rendering both to images and stacking them **per slide**.
 
 ```bash
-# 1) HTML 슬라이드를 이미지로 (변환과 동일하게 noscale + print)
+# 1) Render HTML slides to images (same as conversion: noscale + print)
 node compare/render-html.js "<deck.html>" compare/html
 
-# 2) PPTX 슬라이드를 이미지로 (PPTXjs 브라우저 렌더러 + 실제 폰트 로드)
+# 2) Render PPTX slides to images (PPTXjs browser renderer + real font loading)
 node compare/render-pptx.js "<deck.pptx>" compare/pptx
 
-# 3) 위(HTML)/아래(PPT)로 합쳐 슬라이드별 비교 이미지 생성
+# 3) Stack HTML (top) / PPT (bottom) into one comparison image per slide
 node compare/combine.js          # -> compare/cmp/cmp_NN.png
 ```
 
-## 왜 PowerPoint로 직접 안 뽑나
-PowerPoint COM(`Slides.Export`)/PDF 내보내기는 가능하지만, 일부 기업 문서보안
-DRM(예: "DOCUMENT SAFER")이 PowerPoint **출력 파일을 암호화**해 일반 프로세스가 못 읽습니다.
-그래서 PPT 측은 **PPTXjs**(브라우저용 pptx 렌더러)로 렌더합니다.
+## Why not export straight from PowerPoint?
 
-## 한계 (중요)
-PPTXjs는 우리가 만든 pptx의 **박스 좌표·크기·텍스트·폰트**를 반영하지만 PowerPoint와
-**픽셀 동일하지는 않습니다**. 특히 `::before` 같은 의사요소 불릿, 줄간격, 미세 위치는 다르게
-보일 수 있으니 — 이미지의 차이는 "참고"이지 PowerPoint의 최종 모습 그대로는 아닙니다.
-가장 정확한 확인은 실제 PowerPoint에서 여는 것입니다.
+PowerPoint COM (`Slides.Export`) / PDF export works, but some enterprise document-security
+DRM (e.g. "DOCUMENT SAFER") **encrypts PowerPoint output files** so ordinary processes can't
+read them. So the PPT side is rendered with **PPTXjs** (a browser pptx renderer) instead.
+
+## Limitations (important)
+
+PPTXjs reflects our pptx's **box coordinates, sizes, text and fonts**, but is **not
+pixel-identical to PowerPoint**. Pseudo-element bullets (`::before`), line spacing, and tiny
+positions can look different — so image diffs are a *reference*, not PowerPoint's final
+appearance. The most accurate check is opening the file in PowerPoint itself.

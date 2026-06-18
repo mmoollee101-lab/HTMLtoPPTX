@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" crossorigin="anonymous">
+<style>
+*{box-sizing:border-box;}
+body{margin:0;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+input::placeholder{color:#aab2c2;}
+@keyframes sw-spin{to{transform:rotate(360deg);}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#e7e9ef;padding:32px;font-family:'Hanken Grotesk',system-ui,sans-serif;">
+
+  <!-- ============ APP WINDOW ============ -->
+  <div style="width:720px;border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 24px 60px -18px rgba(15,23,42,.34),0 0 0 1px rgba(15,23,42,.06);">
+
+    <!-- title bar -->
+    <div style="height:42px;display:flex;align-items:center;gap:7px;padding:0 15px;background:#fbfbfd;border-bottom:1px solid #eef1f5;">
+      <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57;"></div>
+      <div style="width:11px;height:11px;border-radius:50%;background:#febc2e;"></div>
+      <div style="width:11px;height:11px;border-radius:50%;background:#28c840;"></div>
+      <span style="flex:1;text-align:center;margin-left:-39px;font-size:12.5px;font-weight:600;color:#94a3b8;letter-spacing:-.01em;">HTML to PPTX</span>
+    </div>
+
+    <!-- body: two-pane -->
+    <div style="display:flex;">
+
+      <!-- LEFT · brand -->
+      <div style="width:262px;flex-shrink:0;background:linear-gradient(168deg,#f6f7fe,#edf0fc 65%,#e9ecfb);border-right:1px solid #eceefb;padding:26px 26px 24px;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:9px;">
+          <div style="width:27px;height:27px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);box-shadow:0 6px 14px -4px rgba(99,102,241,.5);display:flex;align-items:center;justify-content:center;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 18l6-5 4 3 4-4 4 3"/></svg>
+          </div>
+          <span style="font-size:14.5px;font-weight:700;color:#1e293b;letter-spacing:-.02em;">HTML to PPTX</span>
+        </div>
+
+        <h1 style="font-size:21px;font-weight:700;color:#0f172a;letter-spacing:-.025em;line-height:1.2;margin:26px 0 0;">HTML in.<br>Editable slides out.</h1>
+        <p style="font-size:12.5px;color:#6b7280;line-height:1.55;margin:11px 0 0;">No screenshots. Real PowerPoint text, shapes and layout you can keep editing.</p>
+
+        <div style="display:flex;flex-direction:column;gap:13px;margin-top:26px;">
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:20px;height:20px;border-radius:6px;background:#fff;border:1px solid #e3e6f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div>
+            <span style="font-size:12px;color:#475569;line-height:1.4;font-weight:500;">Native, fully editable text boxes</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:20px;height:20px;border-radius:6px;background:#fff;border:1px solid #e3e6f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div>
+            <span style="font-size:12px;color:#475569;line-height:1.4;font-weight:500;">Fonts, colors &amp; layout preserved</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <div style="width:20px;height:20px;border-radius:6px;background:#fff;border:1px solid #e3e6f5;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4 4 10-10"/></svg></div>
+            <span style="font-size:12px;color:#475569;line-height:1.4;font-weight:500;">Runs locally — files never leave your machine</span>
+          </div>
+        </div>
+
+        <div style="margin-top:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:#a3abc2;letter-spacing:.05em;padding-top:22px;">OPEN SOURCE · OFFLINE · v1.0</div>
+      </div>
+
+      <!-- RIGHT · work -->
+      <div style="flex:1;padding:28px 30px;min-height:380px;display:flex;flex-direction:column;justify-content:center;">
+
+        <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6366f1;font-weight:500;letter-spacing:.06em;">CONVERT</div>
+            <div style="font-size:15px;font-weight:700;color:#0f172a;letter-spacing:-.01em;margin:5px 0 18px;">Convert a presentation</div>
+            <div onClick="{{ selectFile }}" style="cursor:pointer;border:1.5px dashed #cdd4e2;border-radius:13px;padding:28px 18px;text-align:center;background:#fafbff;transition:all .15s;" style-hover="border-color:#6366f1;background:#f5f6ff;">
+              <div style="width:46px;height:46px;border-radius:12px;background:#eef2ff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4"/><path d="M7.5 8.5L12 4l4.5 4.5"/><path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></svg>
+              </div>
+              <div style="font-size:13.5px;font-weight:600;color:#1e293b;">Choose an HTML file <span style="color:#6366f1;">or drag it here</span></div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:6px;font-family:'JetBrains Mono',monospace;">self-contained .html recommended</div>
+            </div>
+            <div style="margin-top:16px;">
+              <div style="font-size:12px;font-weight:600;color:#334155;margin-bottom:6px;">Slide selector <span style="font-size:11px;color:#94a3b8;font-weight:400;">· auto-detect if empty</span></div>
+              <input placeholder="Auto · .slide, [data-label], deck-stage…" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#334155;background:#fff;outline:none;" style-focus="border-color:#6366f1;box-shadow:0 0 0 3px #eef2ff;" />
+            </div>
+            <button style="margin-top:13px;width:100%;padding:12px;border-radius:11px;border:none;background:#eef2ff;color:#a5b4fc;font-size:13.5px;font-weight:600;cursor:not-allowed;">Convert to PPTX</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isFile }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6366f1;font-weight:500;letter-spacing:.06em;">READY</div>
+            <div style="font-size:15px;font-weight:700;color:#0f172a;letter-spacing:-.01em;margin:5px 0 18px;">Convert a presentation</div>
+            <div style="display:flex;align-items:center;gap:12px;border:1px solid #e2e8f0;border-radius:13px;padding:13px 15px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04);">
+              <div style="width:40px;height:40px;border-radius:11px;background:#eef2ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5h7l5 5V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M13 3.5V8.5h5"/></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:#1e293b;">keynote-q3.html</div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:2px;">1.8 MB · <span style="color:#16a34a;font-weight:600;">18 slides detected</span></div>
+              </div>
+              <button onClick="{{ reset }}" style="width:26px;height:26px;border-radius:7px;border:none;background:#f1f5f9;color:#94a3b8;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;" style-hover="background:#fee2e2;color:#dc2626;">×</button>
+            </div>
+            <div style="margin-top:16px;">
+              <div style="font-size:12px;font-weight:600;color:#334155;margin-bottom:6px;">Slide selector <span style="font-size:11px;color:#94a3b8;font-weight:400;">· auto-detect if empty</span></div>
+              <input placeholder="Auto · .slide, [data-label], deck-stage…" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:12px;font-family:'JetBrains Mono',monospace;color:#334155;background:#fff;outline:none;" style-focus="border-color:#6366f1;box-shadow:0 0 0 3px #eef2ff;" />
+            </div>
+            <button onClick="{{ startConvert }}" style="margin-top:13px;width:100%;padding:12px;border-radius:11px;border:none;background:#6366f1;color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;box-shadow:0 10px 22px -8px rgba(99,102,241,.6);transition:background .15s;" style-hover="background:#4f46e5;">Convert to PPTX →</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isConverting }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;">
+            <div style="width:52px;height:52px;margin:0 auto 18px;">
+              <svg width="52" height="52" viewBox="0 0 64 64" style="animation:sw-spin 1s linear infinite;"><circle cx="32" cy="32" r="27" fill="none" stroke="#eef1f5" stroke-width="6"/><circle cx="32" cy="32" r="27" fill="none" stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-dasharray="60 200"/></svg>
+            </div>
+            <div style="font-size:15px;font-weight:700;color:#0f172a;letter-spacing:-.01em;">{{ convLabel }}</div>
+            <div style="font-size:11.5px;color:#94a3b8;margin-top:5px;margin-bottom:20px;">Generating editable text boxes…</div>
+            <div style="height:8px;border-radius:99px;background:#eef1f5;overflow:hidden;">
+              <div style="height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:99px;width:{{ progressPct }};transition:width .15s ease;"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:#94a3b8;font-family:'JetBrains Mono',monospace;"><span style="color:#6366f1;font-weight:500;">{{ progressPct }}</span><span onClick="{{ reset }}" style="cursor:pointer;" style-hover="color:#dc2626;">Cancel</span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isComplete }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;">
+            <div style="width:58px;height:58px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;margin:0 auto 15px;">
+              <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-6"/></svg>
+            </div>
+            <div style="font-size:16.5px;font-weight:700;color:#15803d;letter-spacing:-.015em;">keynote-q3.pptx is ready</div>
+            <div style="font-size:11.5px;color:#94a3b8;margin-top:5px;">18 slides · 2.4 MB · editable text &amp; shapes</div>
+            <div style="display:flex;gap:9px;justify-content:center;margin-top:20px;">
+              <button style="padding:10px 22px;border-radius:11px;border:none;background:#6366f1;color:#fff;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 10px 22px -8px rgba(99,102,241,.6);" style-hover="background:#4f46e5;">Open</button>
+              <button style="padding:10px 20px;border-radius:11px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:13px;font-weight:600;cursor:pointer;" style-hover="background:#f8fafc;">Show in folder</button>
+            </div>
+            <div onClick="{{ reset }}" style="margin-top:16px;font-size:12.5px;color:#6366f1;cursor:pointer;font-weight:600;">Convert another</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:center;">
+            <div style="width:58px;height:58px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;margin:0 auto 15px;">
+              <svg width="31" height="31" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v6"/><path d="M12 16.4h.01"/></svg>
+            </div>
+            <div style="font-size:15.5px;font-weight:700;color:#b91c1c;letter-spacing:-.015em;">No slides detected</div>
+            <div style="font-size:11.5px;color:#94a3b8;margin-top:6px;line-height:1.5;">Set a selector like <span style="font-family:'JetBrains Mono',monospace;color:#64748b;">.slide</span> or <span style="font-family:'JetBrains Mono',monospace;color:#64748b;">section</span> and try again.</div>
+            <div style="display:flex;gap:9px;justify-content:center;margin-top:20px;">
+              <button onClick="{{ setFile }}" style="padding:10px 20px;border-radius:11px;border:1px solid #e2e8f0;background:#fff;color:#475569;font-size:13px;font-weight:600;cursor:pointer;" style-hover="background:#f8fafc;">Edit settings</button>
+              <button onClick="{{ startConvert }}" style="padding:10px 22px;border-radius:11px;border:none;background:#6366f1;color:#fff;font-size:13px;font-weight:600;cursor:pointer;" style-hover="background:#4f46e5;">Try again</button>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { view: 'empty', progress: 0 };
+
+  startConvert = () => {
+    if (this.timer) clearInterval(this.timer);
+    this.setState({ view: 'converting', progress: 6 });
+    this.timer = setInterval(() => {
+      this.setState(s => {
+        const p = s.progress + 3;
+        if (p >= 100) {
+          clearInterval(this.timer);
+          setTimeout(() => this.setState({ view: 'complete', progress: 100 }), 320);
+          return { progress: 100 };
+        }
+        return { progress: p };
+      });
+    }, 75);
+  };
+
+  componentWillUnmount() { if (this.timer) clearInterval(this.timer); }
+
+  renderVals() {
+    const view = this.state.view;
+    const p = this.state.progress;
+    const slideNo = Math.min(18, Math.max(1, Math.round(p / 100 * 18)));
+    const stop = () => { if (this.timer) clearInterval(this.timer); };
+    return {
+      progressPct: p + '%',
+      convLabel: 'Converting slide ' + slideNo + ' of 18',
+      isEmpty: view === 'empty',
+      isFile: view === 'file',
+      isConverting: view === 'converting',
+      isComplete: view === 'complete',
+      isError: view === 'error',
+      selectFile: () => { stop(); this.setState({ view: 'file' }); },
+      startConvert: this.startConvert,
+      reset: () => { stop(); this.setState({ view: 'empty', progress: 0 }); },
+      setFile: () => { stop(); this.setState({ view: 'file' }); },
+    };
+  }
+}
+</script>
+</body>
+</html>

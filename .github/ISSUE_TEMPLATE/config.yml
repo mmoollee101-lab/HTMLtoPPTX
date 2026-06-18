@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / discussion
+    url: https://github.com/mmoollee101-lab/HTMLtoPPTX/discussions
+    about: Ask a question or share how you're using HTML to PPTX.
