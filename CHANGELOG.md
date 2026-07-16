@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Font-embedding regression test** (`npm run test:fonts`, zero new dependencies — `node:test`).
+  Converts real decks and asserts the output `.pptx` truly embeds a face: a **data:-URI woff2**
+  fixture (offline) and a **CDN** deck (network-gated, skips cleanly when unreachable). Checks
+  `ppt/fonts` is non-empty, `embeddedFontLst` has Regular **and** Bold, every embedded EOT's cmap
+  covers Korean, and a byte-size floor rejects the unicode-range subset trap. Runs in CI via a
+  dedicated `font-embed` job that launches real Chromium.
+
 ### Fixed
 - **woff2 / inlined web fonts now embed** — decks that ship their fonts as
   `url("data:font/woff2;base64,…")` (self-contained exports) previously came out with the
