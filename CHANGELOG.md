@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`npm run dist` now builds the NSIS installer**, not a portable. The script still forced
+  `--win portable`, which overrode the `nsis` build target added in 1.0.2 — so `npm run dist`
+  silently produced the wrong artifact. Updated to `--win nsis`, and the README's desktop-app
+  section now describes the installer (`-setup.exe`) instead of the old portable `.exe`.
+
 ## [1.0.3] — 2026-07-16
 
 Correct, complete font embedding — and an automated regression guard for it.

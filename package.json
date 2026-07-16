@@ -16,7 +16,7 @@
     "test": "node --test test/font-embed.test.js",
     "test:fonts": "node --test test/font-embed.test.js",
     "predist": "node scripts/resolve-chromium.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis"
   },
   "keywords": [
     "html",
