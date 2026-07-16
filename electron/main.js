@@ -62,6 +62,29 @@ if (!gotLock) {
     return null;
   }
 
+  /** Headless detect+convert in the real (packaged) runtime; logs result, then quits. */
+  async function runSelfTest(htmlPath, engine) {
+    const out = process.env.H2P_SELFTEST_OUT ||
+      path.join(OUTPUT_DIR, safeBaseName(path.basename(htmlPath)) + '.selftest.pptx');
+    console.log('[selftest] packaged=' + app.isPackaged + ' CHROME=' + CHROME);
+    try {
+      const meta = await engine.detectSlides(htmlPath, { executablePath: CHROME });
+      console.log('[selftest] detect OK: ' + JSON.stringify(meta));
+      const buf = await engine.convertHtmlToPptx(htmlPath, {
+        executablePath: CHROME,
+        log: (m) => console.log(m),
+      });
+      fs.writeFileSync(out, buf);
+      console.log('[selftest] convert OK: ' + buf.length + ' bytes → ' + out);
+      app.exit(0);
+    } catch (err) {
+      console.error('[selftest] FAILED: ' + (err && err.message));
+      console.error('[selftest] code=' + (err && err.code));
+      console.error('[selftest] stack: ' + (err && err.stack));
+      app.exit(1);
+    }
+  }
+
   function createWindow() {
     const win = new BrowserWindow({
       width: 720,
@@ -102,6 +125,15 @@ if (!gotLock) {
     }
 
     const { detectSlides, convertHtmlToPptx } = require('../src/convert');
+
+    // Headless self-test (support/diagnostics): when H2P_SELFTEST=<file.html> is set
+    // we run the real detect+convert in this exact (packaged) environment, print the
+    // result or the REAL error, and quit — no window. Inert for normal users.
+    if (process.env.H2P_SELFTEST) {
+      runSelfTest(process.env.H2P_SELFTEST, { detectSlides, convertHtmlToPptx });
+      return;
+    }
+
     mainWindow = createWindow();
 
     app.on('second-instance', () => {
@@ -110,8 +142,16 @@ if (!gotLock) {
       mainWindow.focus();
     });
 
-    const rejectShape = (err) =>
-      Promise.reject({ message: err.message, code: err.code, candidates: err.candidates });
+    // Electron IPC can't serialize a plain-object REJECTION — the renderer would
+    // only see "[object Object]" and lose message/code/candidates. So carry the
+    // error as a RESOLVED, tagged value; preload re-throws it in the renderer with
+    // the real message/code/candidates intact (see electron/preload.js → unwrapError).
+    const errShape = (err) => ({
+      __error: true,
+      message: (err && err.message) || 'Conversion failed.',
+      code: err && err.code,
+      candidates: err && err.candidates,
+    });
 
     ipcMain.handle('h2p:choose-file', async () => {
       const r = await dialog.showOpenDialog(mainWindow, {
@@ -124,7 +164,7 @@ if (!gotLock) {
     });
 
     ipcMain.handle('h2p:detect', (_e, { path: p, selector }) =>
-      detectSlides(p, { slideSelector: selector || undefined, executablePath: CHROME }).catch(rejectShape)
+      detectSlides(p, { slideSelector: selector || undefined, executablePath: CHROME }).catch(errShape)
     );
 
     ipcMain.handle('h2p:convert', async (_e, { path: p, selector, name }) => {
@@ -137,7 +177,7 @@ if (!gotLock) {
           onMeta: (m) => (meta = m),
         });
       } catch (err) {
-        return rejectShape(err);
+        return errShape(err);
       }
       const out = uniquePath(path.join(OUTPUT_DIR, safeBaseName(name) + '.pptx'));
       fs.writeFileSync(out, buf);
