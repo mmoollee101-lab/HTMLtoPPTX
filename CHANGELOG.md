@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **woff2 / inlined web fonts now embed** — decks that ship their fonts as
+  `url("data:font/woff2;base64,…")` (self-contained exports) previously came out with the
+  font *tagged* but **not embedded**, so PowerPoint substituted a wider fallback and bold
+  text rendered as a mismatched faux-bold ("broken fonts"). Font resolution now reads the
+  live CSSOM (so resolved `data:`/`blob:` sources are seen, not the raw placeholder URLs),
+  decodes woff2 to TrueType (PowerPoint can't read woff2), and embeds the real Regular and
+  Bold faces. Cross-origin CDN stylesheets are still parsed Node-side, and only families
+  actually used by the slides are embedded.
+
 ## [1.0.0] — 2026-06-18
 
 First public release.

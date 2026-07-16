@@ -156,7 +156,10 @@ docs/              design + PDCA notes
   measured against the 1920×1080 viewport and can throw off the detected ratio.
 - **Korean / CJK:** use `word-break: keep-all` and leave a little slack in text boxes so
   replacement copy doesn't overflow.
-- **Fonts:** woff2‑only web fonts can't be embedded — provide a `woff/ttf/otf` source.
+- **Fonts:** `woff`, `woff2`, `ttf` and `otf` web fonts are all embedded automatically —
+  including fonts inlined as `data:` URIs (self-contained decks) and cross-origin CDN fonts.
+  woff2 is decoded to TrueType so PowerPoint (which can't read woff2) embeds the real face,
+  and a matching bold weight is added so bold text isn't rendered as a mismatched faux-bold.
 
 ## Roadmap
 

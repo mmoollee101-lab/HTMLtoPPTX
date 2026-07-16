@@ -19,6 +19,77 @@ const fonteditor = require('fonteditor-core');
 const pako = require('pako');
 
 /**
+ * fonteditor-core can decode woff2, but only after its (async) wasm module is
+ * initialized. Init lazily and once — subsequent calls reuse the same promise.
+ */
+let _woff2Ready = null;
+function ensureWoff2() {
+  return _woff2Ready || (_woff2Ready = fonteditor.woff2.init());
+}
+
+/** Sniff a font container from its 4-byte signature. */
+function sniffFontType(buf) {
+  const sig = buf.slice(0, 4).toString('latin1');
+  if (sig === 'wOF2') return 'woff2';
+  if (sig === 'wOFF') return 'woff';
+  if (sig === 'OTTO') return 'otf';
+  return 'ttf'; // 0x00010000 / 'true' / 'ttcf'
+}
+
+/**
+ * Decode any web-font container to a raw TrueType (glyf) Buffer.
+ * woff2 is the important case: the browser resolves it fine, but neither
+ * PowerPoint (needs EOT) nor dom-to-pptx's in-page embedder can read it —
+ * so decks that ship Pretendard/Noto as woff2 data: URIs ended up with the
+ * font tagged but NOT embedded, and PowerPoint substituted a wider fallback
+ * (i.e. "the fonts are all broken"). Decoding to TTF here fixes that.
+ */
+function fontBufferToTtf(buf) {
+  const type = sniffFontType(buf);
+  if (type === 'ttf') return buf;
+  const font = fonteditor.Font.create(buf, {
+    type,
+    hinting: true,
+    inflate: type === 'woff' ? pako.inflate : undefined,
+  });
+  const ttf = font.write({ type: 'ttf', toBuffer: true });
+  return Buffer.isBuffer(ttf) ? ttf : Buffer.from(ttf);
+}
+
+/** Convert any font Buffer to EOT (fntdata) for PowerPoint embedding. */
+function fontBufferToEot(buf) {
+  const type = sniffFontType(buf);
+  const font = fonteditor.Font.create(buf, {
+    type,
+    hinting: true,
+    inflate: type === 'woff' ? pako.inflate : undefined,
+  });
+  const eot = font.write({ type: 'eot', toBuffer: true });
+  return Buffer.isBuffer(eot) ? eot : Buffer.from(eot);
+}
+
+/**
+ * Fetch font bytes from a resolved src URL. Handles data:/http(s):/file: via
+ * Node's fetch, and blob: (which only lives inside the page) by fetching it in
+ * the page and shipping the bytes back as base64.
+ */
+async function fetchFontBuffer(page, url) {
+  if (url.startsWith('blob:')) {
+    const b64 = await page.evaluate(async (u) => {
+      const r = await fetch(u);
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      let s = '';
+      for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+      return btoa(s);
+    }, url);
+    return Buffer.from(b64, 'base64');
+  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('font fetch failed: ' + url.slice(0, 48));
+  return Buffer.from(await r.arrayBuffer());
+}
+
+/**
  * Bump any paragraph whose fixed line spacing (a:spcPts) is smaller than its
  * largest run — dom-to-pptx mis-computes line-height:1 on mixed-size inline text
  * (e.g. a big "±0.1" with a small "mm"), producing a line box shorter than the
@@ -290,26 +361,108 @@ function enhanceFidelityInPage(slideSelector) {
 }
 
 /**
- * Find embeddable web fonts (Node side, so cross-origin CSS isn't blocked).
+ * Find embeddable web fonts and return their reg/bold URLs ready for embedding.
  *
- * dom-to-pptx's autoEmbedFonts reads @font-face via the page's cssRules, which
- * throws for cross-origin CDN stylesheets — so CDN fonts (Pretendard, etc.) end
- * up NOT embedded, and PowerPoint substitutes a wider fallback that shifts the
- * layout (e.g. a name and its title run into each other). Here we fetch each
- * stylesheet ourselves, pull the @font-face URLs, and prefer woff/ttf/otf (NOT
- * woff2 — the embedder can't decode it) so they can be embedded.
+ * Two complementary sources, because neither alone is enough:
+ *   1) The LIVE CSSOM, but ONLY faces inlined as `data:`/`blob:` (in-page). After
+ *      the page's own JS runs, a self-contained deck's @font-face `src` — a bare
+ *      placeholder (e.g. a UUID) in the raw CSS — is resolved to a full
+ *      `data:font/woff2;base64,…` URI. The Node parse below can't see these, so
+ *      the deck's real font was never embedded and PowerPoint substituted a
+ *      fallback (bold text then rendered as a mismatched faux-bold).
+ *   2) The Node-side parse of inline <style> + <link> stylesheets (CDN etc.),
+ *      fetched with a plain UA so a CDN returns the FULL font rather than the
+ *      browser's per-script unicode-range subsets (a subset would embed as a
+ *      tiny face missing most glyphs — e.g. no Korean).
  *
- * @returns {Promise<Array<{name:string,url:string}>>} fonts for options.fonts
+ * woff2 from source (1) is accepted and decoded to TTF downstream (see
+ * fontBufferToTtf) because PowerPoint/dom-to-pptx can't read woff2. Only families
+ * actually used by the slide text are returned, so a stylesheet full of unused
+ * faces doesn't bloat the deck.
+ *
+ * @returns {Promise<Array<{name:string,url:string,boldUrl?:string}>>}
  */
-async function resolveEmbeddableFonts(page, pageBaseUrl) {
-  const sources = await page.evaluate(() => ({
-    links: Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).map((l) => l.href),
-    inline: Array.from(document.querySelectorAll('style')).map((s) => s.textContent),
-  }));
+async function resolveEmbeddableFonts(page, pageBaseUrl, slideSelector) {
+  const { dataFaces, links, inline, usedFamilies } = await page.evaluate((sel) => {
+    const norm = (s) => (s || '').trim().replace(/^['"]|['"]$/g, '').toLowerCase();
 
+    // Families actually rendered by slide text (so we skip unused CDN faces).
+    const used = new Set();
+    const roots = Array.from(document.querySelectorAll(sel));
+    for (const root of roots.length ? roots : [document.body]) {
+      for (const el of root.querySelectorAll('*')) {
+        (getComputedStyle(el).fontFamily || '').split(',').forEach((f) => used.add(norm(f)));
+      }
+    }
+
+    // From the LIVE CSSOM, collect ONLY fonts inlined as data:/blob: — these are
+    // self-contained decks whose src is a placeholder (e.g. a UUID) in the raw
+    // CSS but a resolved data: URI once the page's loader runs, so the Node-side
+    // parse below can't see them. http(s) faces are left to the Node path, which
+    // fetches CDN stylesheets with a plain UA and so gets the FULL font instead of
+    // the browser's per-script unicode-range SUBSETS (a subset embeds as a tiny
+    // face missing most glyphs). Skip subset (unicode-range) faces for the same
+    // reason.
+    const dataFaces = [];
+    for (const sheet of document.styleSheets) {
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch (_) {
+        continue; // cross-origin — handled Node-side via its <link> href
+      }
+      if (!rules) continue;
+      for (const r of rules) {
+        if (!r.constructor || r.constructor.name !== 'CSSFontFaceRule') continue;
+        if ((r.style.getPropertyValue('unicode-range') || '').trim()) continue; // subset
+        const src = r.style.getPropertyValue('src') || '';
+        const m = src.match(/url\(\s*['"]?((?:data|blob):[^'")]+)['"]?\s*\)/i);
+        if (!m) continue;
+        const family = (r.style.getPropertyValue('font-family') || '').trim().replace(/^['"]|['"]$/g, '');
+        const weight = parseInt(r.style.getPropertyValue('font-weight'), 10) || 400;
+        if (family) dataFaces.push({ family, weight, url: m[1] });
+      }
+    }
+
+    return {
+      dataFaces,
+      links: Array.from(document.querySelectorAll('link[rel~="stylesheet"]')).map((l) => l.href),
+      inline: Array.from(document.querySelectorAll('style')).map((s) => s.textContent),
+      usedFamilies: Array.from(used),
+    };
+  }, slideSelector);
+
+  const used = new Set(usedFamilies);
+  const byFamily = new Map(); // family -> { reg:{url,dist}, bold:{url,dist} }
+
+  const add = (family, url, weight, baseUrl = pageBaseUrl) => {
+    let abs;
+    try {
+      abs = /^(data|blob):/.test(url) ? url : new URL(url, baseUrl).href;
+    } catch (_) {
+      return;
+    }
+    const slot = byFamily.get(family) || { reg: null, bold: null };
+    // Keep the weight closest to 400 for regular and closest to 700 for bold,
+    // so bold/heavy text (e.g. a 900 title) embeds a real bold face instead of
+    // being faux-bolded from Regular.
+    const regDist = Math.abs(weight - 400);
+    const boldDist = Math.abs(weight - 700);
+    if (!slot.reg || regDist < slot.reg.dist) slot.reg = { url: abs, dist: regDist };
+    if (weight >= 600 && (!slot.bold || boldDist < slot.bold.dist)) slot.bold = { url: abs, dist: boldDist };
+    byFamily.set(family, slot);
+  };
+
+  // 1) Inlined data:/blob: faces first — authoritative for self-contained decks.
+  //    woff2 is fine here; it is decoded to TTF downstream.
+  for (const f of dataFaces) add(f.family, f.url, f.weight);
+
+  // 2) Node-side parse of inline <style> + <link> stylesheets (CDN etc.). Prefer a
+  //    directly-embeddable container (woff/ttf/otf) and skip woff2 here: a CDN's
+  //    woff2 is served as unicode-range subsets, and a bare non-URL token (a
+  //    placeholder UUID) has no extension to match — both are correctly ignored,
+  //    leaving the full font from either the ttf CDN response or the data: face.
   const faceRe = /@font-face\s*\{([^}]*)\}/gi;
-  const byFamily = new Map(); // family -> { url, dist }
-
   const consider = (css, baseUrl) => {
     let m;
     while ((m = faceRe.exec(css))) {
@@ -319,33 +472,17 @@ async function resolveEmbeddableFonts(page, pageBaseUrl) {
       const family = famM[1].trim().replace(/^['"]|['"]$/g, '');
       const weight = parseInt((body.match(/font-weight\s*:\s*(\d+)/i) || [])[1], 10) || 400;
 
-      // url(...) format('woff'|'truetype'|'opentype') — skip woff2.
       const urls = [...body.matchAll(/url\(\s*['"]?([^'")]+?)['"]?\s*\)\s*format\(\s*['"]?([\w-]+)/gi)];
       let pick = urls.find((u) => /^(woff|truetype|opentype)$/i.test(u[2]));
       if (!pick) {
         const bare = body.match(/url\(\s*['"]?([^'")]+?\.(?:woff|ttf|otf))(?:[?#][^'")]*)?['"]?\s*\)/i);
         if (bare) pick = [bare[0], bare[1]];
       }
-      if (!pick) continue;
-
-      let abs;
-      try { abs = new URL(pick[1], baseUrl).href; } catch (_) { continue; }
-
-      const slot = byFamily.get(family) || { reg: null, bold: null };
-      // Keep the weight closest to 400 for regular and closest to 700 for bold,
-      // so bold/heavy text (e.g. a 900 title) embeds a real bold face instead of
-      // being faux-bolded from Regular.
-      const regDist = Math.abs(weight - 400);
-      const boldDist = Math.abs(weight - 700);
-      if (!slot.reg || regDist < slot.reg.dist) slot.reg = { url: abs, dist: regDist };
-      if (weight >= 600 && (!slot.bold || boldDist < slot.bold.dist))
-        slot.bold = { url: abs, dist: boldDist };
-      byFamily.set(family, slot);
+      if (pick) add(family, pick[1], weight, baseUrl);
     }
   };
-
-  for (const css of sources.inline) consider(css, pageBaseUrl);
-  for (const href of sources.links) {
+  for (const css of inline) consider(css, pageBaseUrl);
+  for (const href of links) {
     try {
       const r = await fetch(href);
       if (r.ok) consider(await r.text(), href);
@@ -353,25 +490,48 @@ async function resolveEmbeddableFonts(page, pageBaseUrl) {
       /* unreachable stylesheet — skip */
     }
   }
-  return [...byFamily]
-    .filter(([, v]) => v.reg)
-    .map(([name, v]) => ({ name, url: v.reg.url, boldUrl: v.bold && v.bold.url }));
+
+  let entries = [...byFamily].filter(([, v]) => v.reg);
+  // Keep only families the slides actually use — but never drop everything
+  // (if the used-family scan came up empty, fall back to all resolved faces).
+  const filtered = entries.filter(([name]) => used.has(name.toLowerCase()));
+  if (filtered.length) entries = filtered;
+  return entries.map(([name, v]) => ({ name, url: v.reg.url, boldUrl: v.bold && v.bold.url }));
 }
 
-/** Fetch a web font and convert it to EOT (fntdata) for PowerPoint embedding. */
+/**
+ * Ensure a resolved font URL is a container PowerPoint/dom-to-pptx can embed.
+ * woff2 → decode and re-wrap as a `data:font/ttf` URI; everything else is left
+ * untouched (http woff/ttf/otf stays a plain URL dom-to-pptx fetches itself).
+ */
+async function toEmbeddableUrl(page, url) {
+  if (!url) return url;
+  // Cheap check first: only fetch+decode when it's plausibly woff2.
+  const looksWoff2 = /^data:font\/woff2/i.test(url) || /\.woff2(\?|#|$)/i.test(url);
+  if (!looksWoff2 && !/^blob:/.test(url)) return url;
+  let buf;
+  try {
+    buf = await fetchFontBuffer(page, url);
+  } catch (_) {
+    return url; // best-effort — fall back to the original URL
+  }
+  if (sniffFontType(buf) !== 'woff2') {
+    // blob: that wasn't woff2 — still needs to be inlined so Node/PP can read it.
+    if (/^blob:/.test(url)) return 'data:font/ttf;base64,' + buf.toString('base64');
+    return url;
+  }
+  await ensureWoff2();
+  const ttf = fontBufferToTtf(buf);
+  return 'data:font/ttf;base64,' + ttf.toString('base64');
+}
+
+/** Fetch a web font (any container) and convert it to EOT for PowerPoint. */
 async function fontUrlToEot(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error('font fetch failed: ' + url);
-  const ab = await res.arrayBuffer();
-  const ext = url.split('.').pop().split(/[?#]/)[0].toLowerCase();
-  const type = ext === 'woff' ? 'woff' : ext === 'otf' ? 'otf' : 'ttf';
-  const font = fonteditor.Font.create(Buffer.from(ab), {
-    type,
-    hinting: true,
-    inflate: type === 'woff' ? pako.inflate : undefined,
-  });
-  const eot = font.write({ type: 'eot', toBuffer: true });
-  return Buffer.isBuffer(eot) ? eot : Buffer.from(eot);
+  if (!res.ok) throw new Error('font fetch failed: ' + url.slice(0, 48));
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (sniffFontType(buf) === 'woff2') await ensureWoff2();
+  return fontBufferToEot(buf);
 }
 
 /**
@@ -609,7 +769,15 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
     let fonts = [];
     if (opts.embedFonts !== false) {
       try {
-        fonts = await resolveEmbeddableFonts(page, fileUrl);
+        fonts = await resolveEmbeddableFonts(page, fileUrl, slideSelector);
+        // Decode woff2 (and inline blob:) to a data:font/ttf URI so PowerPoint
+        // and dom-to-pptx's in-page embedder can actually read the face — both
+        // are woff2-blind, which is why woff2-only decks came out with the font
+        // tagged but not embedded (PowerPoint then substituted a fallback).
+        for (const f of fonts) {
+          f.url = await toEmbeddableUrl(page, f.url);
+          if (f.boldUrl) f.boldUrl = await toEmbeddableUrl(page, f.boldUrl);
+        }
         if (fonts.length) log(`  → embedding font(s): ${fonts.map((f) => f.name).join(', ')}`);
       } catch (_) {
         /* font resolution is best-effort */

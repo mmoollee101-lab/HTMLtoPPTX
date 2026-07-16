@@ -50,10 +50,10 @@ Fidelity tips (editable conversion is not pixel-perfect — that is normal):
     with --print, or off with --no-print.
   • Author slides at a FIXED pixel size (e.g. 1920x1080). vw/vh/% units make the
     16:9 auto-scaling wobble.
-  • Web fonts are embedded automatically (woff/ttf/otf are fetched and bundled)
-    so PowerPoint uses the real font — otherwise a wider fallback shifts the
-    layout (e.g. a name and its title overlap). woff2-only fonts can't embed;
-    add a woff/ttf source. Use --no-embed-fonts for a smaller file.
+  • Web fonts are embedded automatically (woff/woff2/ttf/otf — including fonts
+    inlined as data: URIs and cross-origin CDN fonts) so PowerPoint uses the real
+    font — otherwise a wider fallback shifts the layout and bold text renders as a
+    mismatched faux-bold. Use --no-embed-fonts for a smaller file.
   • For Korean text use  word-break: keep-all  and leave a little slack in text
     boxes so replacement copy doesn't overflow.
   • Need pixel-perfect & non-editable? Use a PDF export instead — out of scope here.
