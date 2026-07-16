@@ -90,6 +90,34 @@ async function fetchFontBuffer(page, url) {
 }
 
 /**
+ * Launch headless Chromium with a generous startup timeout and a clear error.
+ * The packaged portable unpacks a ~240 MB Chromium to a temp dir on first run;
+ * antivirus often scans it then, which can delay startup past Puppeteer's default
+ * 30s timeout. We allow more time and, on failure, throw a human-readable reason
+ * (instead of a cryptic "Timed out" / spawn error) so the UI can show it.
+ */
+async function launchBrowser(executablePath) {
+  try {
+    return await puppeteer.launch({
+      headless: 'new',
+      // In the packaged Electron app, point puppeteer at the bundled Chromium
+      // (executablePath). Omitted by the CLI/web → puppeteer's own default.
+      executablePath: executablePath || undefined,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      timeout: 120000,
+    });
+  } catch (err) {
+    const e = new Error(
+      'Could not start the bundled browser (Chromium). On first run this is usually ' +
+        'antivirus scanning the freshly-unpacked files — wait a few seconds and try again. ' +
+        '(' + ((err && err.message) || 'unknown error') + ')'
+    );
+    e.code = 'CHROMIUM_LAUNCH';
+    throw e;
+  }
+}
+
+/**
  * Bump any paragraph whose fixed line spacing (a:spcPts) is smaller than its
  * largest run — dom-to-pptx mis-computes line-height:1 on mixed-size inline text
  * (e.g. a big "±0.1" with a small "mm"), producing a line box shorter than the
@@ -654,15 +682,7 @@ async function convertHtmlToPptx(htmlPath, opts = {}) {
 
   // Reuse a caller-provided browser (batch mode) or launch a throwaway one.
   const ownBrowser = !opts.browser;
-  const browser =
-    opts.browser ||
-    (await puppeteer.launch({
-      headless: 'new',
-      // In the packaged Electron app, point puppeteer at the bundled Chromium
-      // (opts.executablePath). Omitted by the CLI/web → puppeteer's own default.
-      executablePath: opts.executablePath || undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    }));
+  const browser = opts.browser || (await launchBrowser(opts.executablePath));
 
   const page = await browser.newPage();
   try {
@@ -849,15 +869,7 @@ async function detectSlides(htmlPath, opts = {}) {
   const fileUrl = 'file://' + absHtml.replace(/\\/g, '/');
 
   const ownBrowser = !opts.browser;
-  const browser =
-    opts.browser ||
-    (await puppeteer.launch({
-      headless: 'new',
-      // In the packaged Electron app, point puppeteer at the bundled Chromium
-      // (opts.executablePath). Omitted by the CLI/web → puppeteer's own default.
-      executablePath: opts.executablePath || undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    }));
+  const browser = opts.browser || (await launchBrowser(opts.executablePath));
 
   const page = await browser.newPage();
   try {
