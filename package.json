@@ -13,6 +13,8 @@
     "app:server": "node src/app.js",
     "web": "node src/server.js",
     "sample": "node src/cli.js samples/sample.html",
+    "test": "node --test test/font-embed.test.js",
+    "test:fonts": "node --test test/font-embed.test.js",
     "predist": "node scripts/resolve-chromium.js",
     "dist": "electron-builder --win portable"
   },

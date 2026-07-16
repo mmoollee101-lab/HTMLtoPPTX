@@ -31,7 +31,7 @@ jobs:
 
       - name: Syntax-check all sources
         run: |
-          for f in $(git ls-files 'src/*.js' 'electron/*.js' 'scripts/*.js' 'compare/*.js'); do
+          for f in $(git ls-files 'src/*.js' 'electron/*.js' 'scripts/*.js' 'compare/*.js' 'test/*.js' 'test/**/*.js'); do
             node --check "$f"
           done
 
@@ -40,3 +40,23 @@ jobs:
 
       - name: Validate JSON
         run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8')); console.log('package.json OK')"
+
+  font-embed:
+    name: Font embedding (e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # No PUPPETEER_SKIP_DOWNLOAD here — this job launches real Chromium to run
+      # the conversion end-to-end and assert fonts are actually embedded. The R2
+      # (CDN) case uses the runner's network; it self-skips if the CDN is down.
+      - name: Install dependencies (with Chromium)
+        run: npm ci
+
+      - name: Font-embedding regression check
+        run: npm run test:fonts

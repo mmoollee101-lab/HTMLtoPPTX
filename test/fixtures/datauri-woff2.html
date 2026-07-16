@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>font-embed fixture</title>
+<style>
+  /* A Regular + a Bold @font-face, each an inlined data:font/woff2 — the exact
+     shape self-contained decks emit and that the converter must embed. */
+  @font-face {
+    font-family: "PretendardSubset";
+    font-weight: 400;
+    font-style: normal;
+    src: url("data:font/woff2;base64,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") format("woff2");
+  }
+  @font-face {
+    font-family: "PretendardSubset";
+    font-weight: 700;
+    font-style: normal;
+    src: url("data:font/woff2;base64,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") format("woff2");
+  }
+  html, body { margin: 0; }
+  .slide {
+    width: 1280px; height: 720px; box-sizing: border-box; padding: 80px;
+    font-family: "PretendardSubset", sans-serif; background: #fff; color: #111;
+  }
+  .title { font-weight: 700; font-size: 64px; }   /* uses the Bold face */
+  .body  { font-weight: 400; font-size: 40px; }   /* uses the Regular face */
+</style>
+</head>
+<body>
+  <section class="slide">
+    <div class="title">가나다 ABC</div>
+    <div class="body">가나다 ABC</div>
+  </section>
+</body>
+</html>
